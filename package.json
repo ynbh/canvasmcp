@@ -14,6 +14,7 @@
     "@hey-api/client-axios": "^0.9.1",
     "@hey-api/client-fetch": "^0.13.1",
     "@hey-api/openapi-ts": "^0.78.2",
-    "ai": "^4.3.17"
+    "ai": "^4.3.17",
+    "json-bigint": "^1.0.0"
   }
 }

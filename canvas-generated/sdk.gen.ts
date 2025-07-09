@@ -4207,6 +4207,8 @@ export const listAccountsForCourseAdmins = <ThrowOnError extends boolean = false
     });
 };
 
+import JSONbig from 'json-bigint';
+
 /**
  * List your courses
  * Returns the paginated list of active courses for the current user.
@@ -4225,7 +4227,10 @@ export const listYourCourses = <ThrowOnError extends boolean = false>(options?: 
                 style: 'form'
             }
         },
+
         url: '/v1/courses',
+        transformResponse: (raw: string) =>
+            JSONbig({ storeAsString: true }).parse(raw),
         ...options
     });
 };
@@ -4522,6 +4527,32 @@ export const listAssignments = <ThrowOnError extends boolean = false>(options: O
         ...options
     });
 };
+
+
+// /**
+//  * List Assignment IDs
+//  * Returns a paginated list of assignment IDs for the current context.  
+//  */
+// export const listAssignmentIDs = <ThrowOnError extends boolean = false>(options: Options<ListAssignmentsData, ThrowOnError>) => {
+//     return (options.client ?? _heyApiClient).get<ListAssignmentsResponse, unknown, ThrowOnError>({
+//         security: [
+//             {
+//                 scheme: 'bearer',
+//                 type: 'http'
+//             }
+//         ],
+//         querySerializer: {
+//             array: {
+//                 explode: false,
+//                 style: 'form'
+//             }
+//         },
+//         url: '/v1/courses/{course_id}/assignments',
+//         transformResponse: (raw: string) =>
+//             JSONbig({ storeAsString: true }).parse(raw),
+//         ...options
+//     });
+// };
 
 /**
  * Create an assignment
