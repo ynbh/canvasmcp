@@ -75,7 +75,7 @@ async function main() {
                 if (toolCalls?.length) {
                     console.log('\n[toolCall]');
                 }
-            },                                                   // :contentReference[oaicite:1]{index=1}
+            },                                                
         });
 
         for await (const res of textStream) {
@@ -90,19 +90,3 @@ async function main() {
 
 
 main().catch(console.error); 
-
-// const result = async ({ prompt }: { prompt?: string }) => {
-//     return await generateText({
-//         model: model,
-//         tools: TOOLS,
-//         prompt: "What assignments do I have in CMSC330?",
-//         system: SYSTEM,
-//         maxSteps: 7,
-
-//     })
-// };
-
-// const { text, toolCalls, toolResults } = await result({ prompt: "What courses am I enrolled in?" })
-
-// console.log({ text, toolCalls, toolResults })
-// console.log(toolResults[0].result)
