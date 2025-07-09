@@ -33,12 +33,12 @@ const result = async ({ prompt }: { prompt?: string }) => {
             listFilesCourses: listFilesCourses,
             listAllFoldersCourses: listAllFoldersCourses,
         },
-        prompt: "What folders and files exist in the course CMSC330Summer2025?",
+        prompt: "What folders and files exist in the course CMSC330?",
         // toolChoice: "required",
         system: `You are a helpful assistant that can answer questions about courses and files in a university setting. 
         You can use the tools provided to get information about courses, favorite courses, and files in courses.
         All tools except listCourseDetails require a course ID to be passed in. Therefore, always call the tool listCourseDetails first to gather course IDs.
-        Note: Course names provided by the user may not match the course names in the system. Find the closest match to the course name provided by the user.`,
+        Note: Course names provided by the user may not match the course names in the system. Find the closest match to the course name provided by the user, and use that closest match as the source of truth for the course ID.`,
         maxSteps: 7,
 
     })
