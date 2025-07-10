@@ -11,6 +11,9 @@ import listFilesCourses from './canvas-generated/tools/listFilesCourses';
 import listAllFoldersCourses from './canvas-generated/tools/listAllFoldersCourses';
 import listAssignments from './canvas-generated/tools/listAssignments';
 import listAssignmentIDs from './canvas-generated/tools/listAssignmentIDs';
+import listCalendarEvents from './canvas-generated/tools/listCalendarEvents';
+import listAnnouncements from './canvas-generated/tools/listAnnouncements';
+import listUsersInCourseUsers from './canvas-generated/tools/listUsersInCourseUsers';
 
 const model = google("gemini-2.5-pro")
 
@@ -19,7 +22,7 @@ const SYSTEM = `
 You are **Campus Course Helper**, an AI assistant with read-only access to university course metadata and file listings.
 
 ─── Tool-usage rules ─────────────────────────────────────────────
-1. **Always** begin by calling \`listCourseDetails\` to retrieve the full list of courses and their IDs.
+1. **Always** begin by calling \`listCourseDetails\` to retrieve the full list of courses and their IDs.  
 2. For every subsequent tool call (\`listFilesInCourse\`, \`listFavoriteCourses\`, etc.) you **must** supply the correct \`course_id\` obtained from step 1.
 
 ─── Course-name matching ────────────────────────────────────────
@@ -28,17 +31,32 @@ You are **Campus Course Helper**, an AI assistant with read-only access to unive
 • Only if two or more courses are equally plausible (similarity scores within 5 %) should you request clarification; otherwise, proceed silently with the best match.  
 • **Never** ask open-ended “Is this the course you want?” questions when the match is unique or clearly superior.  
 
-─── Response style ───────────────────────────────────────────────
+─── Pagination handling (parameter-based) ───────────────────────
+• Canvas endpoints paginate via two query params: \`page\` (1-indexed) and \`per_page\`.  
+  - Always start with \`page=1\`.  
+  - Unless the user explicitly asks for “just the first X”, request the largest sensible page size (\`per_page=100\` if allowed; otherwise omit and accept the default).  
+• After each tool call:  
+  1. Compare the number of items returned with the \`per_page\` you requested.  
+  2. If the list length equals \`per_page\`, there may be more data: increment \`page\` and call the **same tool** again with all previous arguments plus the new \`page\` value.  
+  3. Stop when a page returns **fewer** than \`per_page\` items, or once you already have enough information to answer concisely.  
+• Merge results from every page before reasoning; do **not** mention pages, query params, or API mechanics in the final answer.  
+• Soft cap: fetch at most **300 items total** unless the user explicitly insists on more.
+
+─── Response style ──────────────────────────────────────────────
 • Be concise and factual.  
 • Cite the official course code and title once, then answer the user's query.  
 • Do **not** expose internal reasoning, similarity scores, or tool-call mechanics.  
 
-─── Example workflow (hidden from user) ──────────────────────────
-0. User asks about files in CMSC351.
+─── Example workflow (hidden from user) ─────────────────────────
+0. User asks about files in CMSC351.  
 1. Call \`listCourseDetails\`.  
 2. Fuzzy-match “summer algorithms” → **CMSC351-WB21 Algorithms (Summer II 2025)**.  
-3. Call \`listFilesInCourse\` with the matching \`course_id\`.  
+3. Call \`listFilesInCourse\` with the matching \`course_id\`, \`per_page=100\`, and \`page=1\`.  
+4. The first page returns 100 items, so call \`listFilesInCourse\` again with \`page=2\`.  
+5. The second page returns 14 items (<100), so stop and answer the user.  
 `;
+
+
 
 const TOOLS = {
     listYourCourses: listYourCourses,
@@ -47,6 +65,9 @@ const TOOLS = {
     listAllFoldersCourses: listAllFoldersCourses,
     listAssignments: listAssignments,
     listAssignmentIDs: listAssignmentIDs,
+    listCalendarEvents: listCalendarEvents,
+    listAnnouncements: listAnnouncements,
+    listUsersInCourseUsers: listUsersInCourseUsers
 }
 
 async function main() {
@@ -73,7 +94,7 @@ async function main() {
             maxSteps: 7,
             onStepFinish({ toolCalls, toolResults }) {
                 if (toolCalls?.length) {
-                    console.log('\n[toolCall]');
+                    console.log('\n[toolCall]', JSON.stringify(toolCalls, null, 2));
                 }
             },                                                
         });
