@@ -24,7 +24,7 @@ Returns the paginated list of active courses for the current user. Includes othe
       // })
 
       const filtered = data?.map(course => ({
-        id: course?.id != null ? course.id.toString() : "",   // ⇦ now a plain string
+        id: course?.id != null ? course.id.toString() : "", 
         name: course.name,
       }));
 

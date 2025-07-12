@@ -14735,6 +14735,9 @@ export const listFavoriteCourses = <ThrowOnError extends boolean = false>(option
             }
         ],
         url: '/v1/users/self/favorites/courses',
+        // fix bug where IDs dont get parsed correctly since they are big ints
+        transformResponse: (raw: string) =>
+            JSONbig({ storeAsString: true }).parse(raw),
         ...options
     });
 };

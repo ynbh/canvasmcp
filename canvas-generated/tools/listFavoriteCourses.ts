@@ -3,6 +3,7 @@ import { tool } from "ai";
 import { listFavoriteCoursesDataSchema } from "./aitm.schema.ts";
 import { listFavoriteCourses, ListFavoriteCoursesData } from "..";
 
+
 export default tool({
   description: `
   List favorite courses
@@ -20,7 +21,7 @@ parameters.
       const { data } = await listFavoriteCourses(args);
 
       const filtered = data?.map(course => ({
-        id: course?.id != null ? course.id.toString() : "",   // ⇦ now a plain string
+        id: course?.id != null ? course.id.toString() : "",  
         name: course.name,
       }));
 
