@@ -1,4 +1,4 @@
-import { generateText, streamText, type CoreMessage } from 'ai';
+import { generateText, streamText, type CoreMessage, tool } from 'ai';
 import { google } from "@ai-sdk/google"
 
 import readline from 'node:readline/promises';
@@ -46,6 +46,7 @@ You are **Campus Course Helper**, an AI assistant with read-only access to unive
 • Be concise and factual.  
 • Cite the official course code and title once, then answer the user's query.  
 • Do **not** expose internal reasoning, similarity scores, or tool-call mechanics.  
+• If a question involves dates and time, use the \`getTodayTool\` to get today's date in ISO format, and format dates relative to today (e.g., "next Monday", "in 2 weeks").
 
 ─── Example workflow (hidden from user) ─────────────────────────
 0. User asks about files in CMSC351.  
@@ -57,17 +58,29 @@ You are **Campus Course Helper**, an AI assistant with read-only access to unive
 `;
 
 
+import { z } from 'zod';
+import { get } from 'node:http';
+
+const getTodayTool = tool({
+    parameters: z.object({}),
+    description: `Get today's date in ISO format`,
+    execute: async (_args, _options) => {
+        const today = new Date();
+        return today.toISOString();
+    }
+})
+
+
 
 const TOOLS = {
     listYourCourses: listYourCourses,
-    listFavoriteCourses: listFavoriteCourses,
-    listFilesCourses: listFilesCourses,
     listAllFoldersCourses: listAllFoldersCourses,
     listAssignments: listAssignments,
     listAssignmentIDs: listAssignmentIDs,
     listCalendarEvents: listCalendarEvents,
     listAnnouncements: listAnnouncements,
-    listUsersInCourseUsers: listUsersInCourseUsers
+    listUsersInCourseUsers: listUsersInCourseUsers,
+    getTodayTool: getTodayTool,
 }
 
 async function main() {
@@ -85,8 +98,12 @@ async function main() {
         }
 
         messages.push({ role: 'user', content: userInput });
+        console.log('\n[debug] Messages so far: ', messages.length);
+
 
         let assistant = ''
+        console.log('[debug] Calling streamText');
+
         const { textStream } = streamText({
             model,
             messages: messages as CoreMessage[],
@@ -94,10 +111,14 @@ async function main() {
             maxSteps: 7,
             onStepFinish({ toolCalls, toolResults }) {
                 if (toolCalls?.length) {
-                    console.log('\n[toolCall]', JSON.stringify(toolCalls, null, 2));
+                    console.log('\n[debug] -> step finished');
+
+                    if (toolCalls?.length) console.log('[debug]  toolCalls:', JSON.stringify(toolCalls, null, 2));
+                    if (toolResults?.length) console.log('[debug]  toolResults:', JSON.stringify(toolResults, null, 2));
                 }
-            },                                                
+            },
         });
+              console.log('[debug] Streaming tokens:');
 
         for await (const res of textStream) {
             assistant += res;
