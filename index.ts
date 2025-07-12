@@ -10,6 +10,7 @@ import listFilesCourses from './canvas-generated/tools/listFilesCourses';
 import listAllFoldersCourses from './canvas-generated/tools/listAllFoldersCourses';
 import listAssignments from './canvas-generated/tools/listAssignments';
 import listAssignmentIDs from './canvas-generated/tools/listAssignmentIDs';
+import getSingleAssignment from './canvas-generated/tools/getSingleAssignment';
 import listCalendarEvents from './canvas-generated/tools/listCalendarEvents';
 import listAnnouncements from './canvas-generated/tools/listAnnouncements';
 import listUsersInCourseUsers from './canvas-generated/tools/listUsersInCourseUsers';
@@ -32,12 +33,17 @@ Current day: ${currentDate.toLocaleDateString('en-US', { weekday: 'long' })}
 
 ─── CRITICAL WORKFLOW RULES ─────────────────────────────────────────────
 1. **ALWAYS follow this exact sequence for assignment queries:**
-   a) FIRST: Check course context using substring matching on course names (e.g., "ENES" matches "ENES462")
-   b) If context match found, use that course_id directly - DO NOT ask for clarification
+   a) FIRST: Check course context using substring matching on course names:
+      - "inst" or "inst class" matches courses containing "INST" (like "INST154")
+      - "enes" matches courses containing "ENES" 
+      - Case-insensitive matching
+   b) If context match found, use that EXACT FULL course_id from context - DO NOT ask for clarification
    c) IF NO CONTEXT MATCH: Call \`listFavoriteCourses\` to get starred/favorited courses (only option available)
-   d) For EACH identified course, call \`listAssignments\` with that course_id
-   e) Analyze all assignment data before responding
-   f) Filter by due dates if user asks for "due this week" etc.
+   d) For EACH identified course, call \`listAssignments\` with the EXACT FULL course_id from context
+   f) Analyze all assignment data before responding
+   g) Filter by due dates if user asks for "due this week" etc.
+   
+   **CRITICAL**: ENSURE YOU ARE USING THE CORRECT COURSE AND ASSIGNMENT IDS BASED ON CONTEXT
 
 2. **For course listing queries:**
    a) Call \`listFavoriteCourses\` (only course listing tool available)
@@ -49,7 +55,7 @@ Current day: ${currentDate.toLocaleDateString('en-US', { weekday: 'long' })}
    c) Match course name using fuzzy logic
    d) Call \`listFilesCourses\` with the matched course_id
 
-4. **NEVER stop after just listing courses** - always complete the full workflow
+4. ALWAYS COMPLETE THE WORKFLOW
 
 ─── ASSIGNMENT-SPECIFIC INSTRUCTIONS ────────────────────────────────────
 • When user asks "what's due", "assignments due", "homework", "stuff due", etc:
@@ -57,12 +63,19 @@ Current day: ${currentDate.toLocaleDateString('en-US', { weekday: 'long' })}
   - You MUST call listAssignments for ALL favorited courses, not just one
   - You MUST check due dates and filter appropriately
   - You MUST present a consolidated view across all favorited courses
+• When user asks for "assignment details", "description", "what is X assignment about":
+  - First get assignment list, then call getSingleAssignment for specific assignments
+  - getSingleAssignment requires path: {course_id: "course_id", id: "assignment_id"}
+  - Include assignment description, submission types, points possible, rubric info
+  - Show detailed requirements and instructions
+• When user asks for "past assignments", "closed assignments", "completed assignments":
+  - Use bucket: "past" parameter in listAssignments
+  - When user asks for "upcoming assignments": use bucket: "upcoming"
+  - When user asks for "overdue assignments": use bucket: "overdue"
 • When user asks "my courses", "get my courses", "show courses", "list courses":
   - DEFAULT: Use listFavoriteCourses (show starred/favorited courses)
   - Don't ask - just show favorited courses by default
-• Only favorited courses are available (listYourCourses tool removed)
 • When user asks about specific course names, check context first, then favorited courses
-• If user asks for "ALL courses" - explain only favorited courses are accessible
 
 ─── DATE FILTERING LOGIC ────────────────────────────────────────────────
 • For precise date filtering, call getCurrentDate tool first to get real-time date context
@@ -80,7 +93,7 @@ Current day: ${currentDate.toLocaleDateString('en-US', { weekday: 'long' })}
 • Prioritize courses that are currently active vs completed
 • If user asks about "current" or "this semester" - filter to active only
 
-─── STARRED/FAVORITE COURSE LOGIC (ONLY OPTION) ────────────────────────
+─── STARRED/FAVORITE COURSE LOGIC  ────────────────────────
 • ONLY TOOL: listFavoriteCourses is the only course listing tool available
 • These are courses the user has marked as favorites in Canvas
 • Favorited courses are assumed to be the user's current/important classes
@@ -89,13 +102,15 @@ Current day: ${currentDate.toLocaleDateString('en-US', { weekday: 'long' })}
 ─── COURSE CONTEXT MEMORY ───────────────────────────────────────────────
 • Relevant courses from conversation: ${Array.from(courseContext.entries()).map(([id, name]) => `${id}:${name}`).join(', ') || 'none yet'}
 • When user mentions course names/codes, match using these rules:
-  - "ENES" matches any course name containing "ENES" (like "ENES462")
   - "algorithms" matches course names containing "Algorithm" 
   - "CMSC216" matches exact course codes
   - Case-insensitive substring matching on course names
+  - Match case-insensitive four letter combinations (example :math -> MATH210, inst -> INST100)
 • If ANY course in context matches user's query, use that course ID immediately
 • DO NOT ask for clarification if there's a clear match in context
 • When user says "that class", "those courses" - use all context IDs
+• CRITICAL: Always use the FULL course ID from context (like "11330000001361328"), never shortened versions
+• BEFORE MAKING TOOL CALLS: Look at context above, find the course ID, use that EXACT ID in the tool call
 
 ─── Course-name matching ────────────────────────────────────────
 • Users' wording may differ from official course titles. Apply a fuzzy-matching strategy (case- and punctuation-insensitive substring or Levenshtein similarity).  
@@ -134,6 +149,7 @@ const TOOLS = {
     listAllFoldersCourses: listAllFoldersCourses,
     listAssignments: listAssignments,
     listAssignmentIDs: listAssignmentIDs,
+    getSingleAssignment: getSingleAssignment,
     listCalendarEvents: listCalendarEvents,
     listAnnouncements: listAnnouncements,
     listUsersInCourseUsers: listUsersInCourseUsers
@@ -153,7 +169,11 @@ async function main() {
             break;
         }
 
-        messages.push({ role: 'user', content: userInput });
+        // Add current course context to user message
+        const currentContext = Array.from(courseContext.entries()).map(([id, name]) => `${id}:${name}`).join(', ');
+        const contextMessage = currentContext ? `\n\nCurrent course context: ${currentContext}` : '';
+        
+        messages.push({ role: 'user', content: userInput + contextMessage });
 
         let assistant = ''
         const { textStream } = streamText({
