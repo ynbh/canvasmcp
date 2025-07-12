@@ -13,18 +13,22 @@ import listAssignmentIDs from './canvas-generated/tools/listAssignmentIDs';
 import listCalendarEvents from './canvas-generated/tools/listCalendarEvents';
 import listAnnouncements from './canvas-generated/tools/listAnnouncements';
 import listUsersInCourseUsers from './canvas-generated/tools/listUsersInCourseUsers';
+import getCurrentDate from './canvas-generated/tools/getCurrentDate';
 
 const model = google("gemini-2.5-pro")
 
 // Store course IDs and names mentioned in conversation for context
 let courseContext = new Map<string, string>(); // Map<courseId, courseName>
 
+// Use single date object to avoid timing issues
+const currentDate = new Date();
+
 const SYSTEM = `
 You are **Campus Course Helper**, an AI assistant with read-only access to university course metadata and file listings.
 
-Current date: ${new Date().toISOString()}
-Current date formatted: ${new Date().toLocaleDateString()}
-Current day: ${new Date().toLocaleDateString('en-US', { weekday: 'long' })}
+Current date: ${currentDate.toISOString()}
+Current date formatted: ${currentDate.toLocaleDateString()}
+Current day: ${currentDate.toLocaleDateString('en-US', { weekday: 'long' })}
 
 ─── CRITICAL WORKFLOW RULES ─────────────────────────────────────────────
 1. **ALWAYS follow this exact sequence for assignment queries:**
@@ -61,7 +65,8 @@ Current day: ${new Date().toLocaleDateString('en-US', { weekday: 'long' })}
 • If user asks for "ALL courses" - explain only favorited courses are accessible
 
 ─── DATE FILTERING LOGIC ────────────────────────────────────────────────
-• Use the current date provided above for all time-based filtering
+• For precise date filtering, call getCurrentDate tool first to get real-time date context
+• Use the current date from getCurrentDate for all time-based filtering
 • "due today" = assignment due_at matches current date
 • "due this week" = assignment due_at within next 7 days from current date
 • Filter Canvas assignment due_at dates accordingly
@@ -123,6 +128,7 @@ User: "show me what's due this week"
 
 
 const TOOLS = {
+    getCurrentDate: getCurrentDate,
     listFavoriteCourses: listFavoriteCourses,
     listFilesCourses: listFilesCourses,
     listAllFoldersCourses: listAllFoldersCourses,
