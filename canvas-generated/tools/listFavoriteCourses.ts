@@ -18,7 +18,13 @@ parameters.
   execute: async (args : Omit<ListFavoriteCoursesData, "url"> ) => {
     try {
       const { data } = await listFavoriteCourses(args);
-      return data;
+
+      const filtered = data?.map(course => ({
+        id: course?.id != null ? course.id.toString() : "",   // ⇦ now a plain string
+        name: course.name,
+      }));
+
+      return filtered;
     } catch (e: unknown) {
       console.log(e);
       return "no results";

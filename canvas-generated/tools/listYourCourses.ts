@@ -12,12 +12,23 @@ Returns the paginated list of active courses for the current user. Includes othe
   execute: async (args: Omit<ListYourCoursesData, "url">) => {
     try {
       const { data } = await listYourCourses(args);
+
+      // const today = new Date();
+      // const iso = today.toISOString();
+
+      // const currentSem = data?.filter(course => {
+      //   const t  = course?.term; 
+
+      //   return (!t.start_at || iso >= t.start_at) &&
+      //      (!t.end_at   || iso <  t.end_at);
+      // })
+
       const filtered = data?.map(course => ({
         id: course?.id != null ? course.id.toString() : "",   // ⇦ now a plain string
         name: course.name,
-      })); 
-      console.log("gathered courses", filtered);
-      return data;
+      }));
+
+      return filtered;
     } catch (e: unknown) {
       console.log(e);
       return "no results";
