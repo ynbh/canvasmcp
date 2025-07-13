@@ -1,6 +1,7 @@
 # dependencies (bun install)
 node_modules
 
+.mcp.*
 # output
 out
 dist
