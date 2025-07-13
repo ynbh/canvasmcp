@@ -22,18 +22,23 @@ import { exportToMD } from './export';
 const model = google("gemini-2.5-pro")
 
 let courseContext = new Map<string, string>(); // Map<courseId, courseName>
+let assignmentCache = new Map<string, {courseId: string, name: string}>(); // Map<assignmentId, {courseId, name}>
 
 
 
 
 const getCourseContext = tool({
-    description: 'Returns the list of known course IDs and names from prior interactions. Use this to check existing context before calling listFavoriteCourses.',
+    description: 'Returns known course IDs/names and recently seen assignment IDs/names. For full assignment details, use getSingleAssignment.',
     parameters: z.object({}),
     execute: async () => {
-        return Array.from(courseContext.entries()).map(([id, name]) => ({
-            id,
-            name
-        }));
+        return {
+            courses: Array.from(courseContext.entries()).map(([id, name]) => ({ id, name })),
+            assignments: Array.from(assignmentCache.entries()).map(([assignmentId, data]) => ({
+                assignmentId,
+                courseId: data.courseId,
+                name: data.name
+            }))
+        };
     }
 });
 
@@ -76,7 +81,8 @@ async function main() {
 
         if (userInput.toLowerCase() === 'clear_context') {
             courseContext.clear();
-            console.log('Course context cleared.');
+            assignmentCache.clear();
+            console.log('Course context and assignment cache cleared.');
             continue;
         }
 
@@ -114,7 +120,26 @@ async function main() {
                         const courseId = toolCalls.find(tc => tc.toolName === 'listAssignments')?.args?.path?.course_id;
                         if (courseId && !courseContext.has(courseId.toString())) {
                             courseContext.set(courseId.toString(), 'Unknown Course');
-
+                        }
+                        // Cache assignment IDs and names
+                        const assignments = Array.isArray(result.result) ? result.result : [result.result];
+                        assignments.forEach(assignment => {
+                            if (typeof assignment === 'object' && assignment !== null && 'id' in assignment && assignment.id && assignment.name) {
+                                assignmentCache.set(assignment.id.toString(), {
+                                    courseId: courseId.toString(),
+                                    name: assignment.name
+                                });
+                            }
+                        });
+                    }
+                    if (result.toolName === 'getSingleAssignment') {
+                        const courseId = toolCalls.find(tc => tc.toolName === 'getSingleAssignment')?.args?.path?.course_id;
+                        const assignment = result.result;
+                        if (courseId && assignment && typeof assignment === 'object' && 'id' in assignment && assignment.id && assignment.name) {
+                            assignmentCache.set(assignment.id.toString(), {
+                                courseId: courseId.toString(),
+                                name: assignment.name
+                            });
                         }
                     }
                 });
