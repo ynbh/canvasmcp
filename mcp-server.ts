@@ -1,3 +1,10 @@
+// Redirect ALL console methods to stderr IMMEDIATELY to prevent stdio interference
+console.log = (...args) => process.stderr.write('[LOG] ' + args.join(' ') + '\n');
+console.warn = (...args) => process.stderr.write('[WARN] ' + args.join(' ') + '\n');
+console.info = (...args) => process.stderr.write('[INFO] ' + args.join(' ') + '\n');
+console.debug = (...args) => process.stderr.write('[DEBUG] ' + args.join(' ') + '\n');
+console.trace = (...args) => process.stderr.write('[TRACE] ' + args.join(' ') + '\n');
+
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -19,10 +26,17 @@ let courseContext = new Map<string, string>(); // Map<courseId, courseName>
 let assignmentCache = new Map<string, {courseId: string, name: string}>(); // Map<assignmentId, {courseId, name}>
 
 // Create MCP server
-const server = new McpServer({
-  name: "canvas-lms-ai",
-  version: "1.0.0"
-});
+const server = new McpServer(
+  {
+    name: "canvas-lms-ai",
+    version: "1.0.0"
+  },
+  {
+    capabilities: {
+      tools: {},
+    }
+  }
+);
 
 // Register Canvas tools as MCP tools
 
@@ -37,11 +51,11 @@ server.registerTool(
     try {
       const result = await getCurrentDate.execute({});
       return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }]
+        content: [{ type: "text", text: JSON.stringify(result || {}, null, 2) }]
       };
     } catch (error: any) {
       return {
-        content: [{ type: "text", text: `Error: ${error.message}` }],
+        content: [{ type: "text", text: `Error: ${error.message || 'Unknown error'}` }],
         isError: true
       };
     }
@@ -57,7 +71,7 @@ server.registerTool(
   },
   async () => {
     try {
-      const { data } = await listFavoriteCourses.execute({});
+      const data = await listFavoriteCourses.execute({});
       
       // Cache course context (same logic as chat mode)
       if (Array.isArray(data)) {
@@ -69,11 +83,11 @@ server.registerTool(
       }
       
       return {
-        content: [{ type: "text", text: JSON.stringify(data, null, 2) }]
+        content: [{ type: "text", text: JSON.stringify(data || [], null, 2) }]
       };
     } catch (error: any) {
       return {
-        content: [{ type: "text", text: `Error: ${error.message}` }],
+        content: [{ type: "text", text: `Error: ${error.message || 'Unknown error'}` }],
         isError: true
       };
     }
@@ -98,11 +112,11 @@ server.registerTool(
         }))
       };
       return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }]
+        content: [{ type: "text", text: JSON.stringify(result || {}, null, 2) }]
       };
     } catch (error: any) {
       return {
-        content: [{ type: "text", text: `Error: ${error.message}` }],
+        content: [{ type: "text", text: `Error: ${error.message || 'Unknown error'}` }],
         isError: true
       };
     }
@@ -132,7 +146,7 @@ server.registerTool(
         if (include) args.query.include = include;
       }
       
-      const { data } = await listAssignments.execute(args);
+      const data = await listAssignments.execute(args);
       
       // Cache assignment context (same logic as chat mode)
       if (Array.isArray(data)) {
@@ -147,11 +161,11 @@ server.registerTool(
       }
       
       return {
-        content: [{ type: "text", text: JSON.stringify(data, null, 2) }]
+        content: [{ type: "text", text: JSON.stringify(data || [], null, 2) }]
       };
     } catch (error: any) {
       return {
-        content: [{ type: "text", text: `Error: ${error.message}` }],
+        content: [{ type: "text", text: `Error: ${error.message || 'Unknown error'}` }],
         isError: true
       };
     }
@@ -193,11 +207,11 @@ server.registerTool(
       }
       
       return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }]
+        content: [{ type: "text", text: JSON.stringify(result || {}, null, 2) }]
       };
     } catch (error: any) {
       return {
-        content: [{ type: "text", text: `Error: ${error.message}` }],
+        content: [{ type: "text", text: `Error: ${error.message || 'Unknown error'}` }],
         isError: true
       };
     }
@@ -227,13 +241,13 @@ server.registerTool(
         if (perPage) args.query.per_page = perPage;
       }
       
-      const { data } = await listFilesCourses.execute(args);
+      const data = await listFilesCourses.execute(args);
       return {
-        content: [{ type: "text", text: JSON.stringify(data, null, 2) }]
+        content: [{ type: "text", text: JSON.stringify(data || [], null, 2) }]
       };
     } catch (error: any) {
       return {
-        content: [{ type: "text", text: `Error: ${error.message}` }],
+        content: [{ type: "text", text: `Error: ${error.message || 'Unknown error'}` }],
         isError: true
       };
     }
@@ -251,15 +265,15 @@ server.registerTool(
   },
   async ({ courseId }) => {
     try {
-      const { data } = await listAllFoldersCourses.execute({
+      const data = await listAllFoldersCourses.execute({
         path: { course_id: courseId }
       });
       return {
-        content: [{ type: "text", text: JSON.stringify(data, null, 2) }]
+        content: [{ type: "text", text: JSON.stringify(data || [], null, 2) }]
       };
     } catch (error: any) {
       return {
-        content: [{ type: "text", text: `Error: ${error.message}` }],
+        content: [{ type: "text", text: `Error: ${error.message || 'Unknown error'}` }],
         isError: true
       };
     }
@@ -292,13 +306,13 @@ server.registerTool(
         args.query = query;
       }
       
-      const { data } = await listCalendarEvents.execute(args);
+      const data = await listCalendarEvents.execute(args);
       return {
-        content: [{ type: "text", text: JSON.stringify(data, null, 2) }]
+        content: [{ type: "text", text: JSON.stringify(data || [], null, 2) }]
       };
     } catch (error: any) {
       return {
-        content: [{ type: "text", text: `Error: ${error.message}` }],
+        content: [{ type: "text", text: `Error: ${error.message || 'Unknown error'}` }],
         isError: true
       };
     }
@@ -325,13 +339,13 @@ server.registerTool(
       if (startDate) args.query.start_date = startDate;
       if (endDate) args.query.end_date = endDate;
       
-      const { data } = await listAnnouncements.execute(args);
+      const data = await listAnnouncements.execute(args);
       return {
-        content: [{ type: "text", text: JSON.stringify(data, null, 2) }]
+        content: [{ type: "text", text: JSON.stringify(data || [], null, 2) }]
       };
     } catch (error: any) {
       return {
-        content: [{ type: "text", text: `Error: ${error.message}` }],
+        content: [{ type: "text", text: `Error: ${error.message || 'Unknown error'}` }],
         isError: true
       };
     }
@@ -361,13 +375,13 @@ server.registerTool(
         if (include) args.query.include = include;
       }
       
-      const { data } = await listUsersInCourseUsers.execute(args);
+      const data = await listUsersInCourseUsers.execute(args);
       return {
-        content: [{ type: "text", text: JSON.stringify(data, null, 2) }]
+        content: [{ type: "text", text: JSON.stringify(data || [], null, 2) }]
       };
     } catch (error: any) {
       return {
-        content: [{ type: "text", text: `Error: ${error.message}` }],
+        content: [{ type: "text", text: `Error: ${error.message || 'Unknown error'}` }],
         isError: true
       };
     }
@@ -378,19 +392,14 @@ server.registerTool(
 async function main() {
   // Check for required environment variable
   if (!process.env.CANVAS_API_TOKEN) {
-    console.error('Error: CANVAS_API_TOKEN environment variable required');
-    console.error('Set it in your Claude Desktop config or run: export CANVAS_API_TOKEN="your_token_here"');
+    process.stderr.write('Error: CANVAS_API_TOKEN environment variable required\n');
     process.exit(1);
   }
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  
-  // Log to stderr so it doesn't interfere with MCP communication on stdout
-  console.error("Canvas LMS MCP server running...");
 }
 
 main().catch((error) => {
-  console.error("Error starting MCP server:", error);
   process.exit(1);
 });
