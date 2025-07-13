@@ -3,6 +3,10 @@
   "module": "index.ts",
   "type": "module",
   "private": true,
+  "scripts": {
+    "chat": "bun index.ts",
+    "mcp": "bun mcp-server.ts"
+  },
   "devDependencies": {
     "@types/bun": "latest"
   },
@@ -14,7 +18,9 @@
     "@hey-api/client-axios": "^0.9.1",
     "@hey-api/client-fetch": "^0.13.1",
     "@hey-api/openapi-ts": "^0.78.2",
+    "@modelcontextprotocol/sdk": "^1.0.0",
     "ai": "^4.3.17",
-    "json-bigint": "^1.0.0"
+    "json-bigint": "^1.0.0",
+    "zod": "^3.22.0"
   }
 }

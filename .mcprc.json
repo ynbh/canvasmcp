@@ -1,0 +1,8 @@
+{
+    "mcpServers": {
+      "canvas-server": {
+        "command": "bun",
+        "args": ["mcp-server.ts"]
+      }
+    }
+  }
