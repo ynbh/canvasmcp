@@ -1,39 +1,22 @@
-# dependencies (bun install)
-node_modules
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
 
-# output
-out
-dist
-*.tgz
+# Virtual environments
+.venv/
+venv/
 
-# code coverage
-coverage
-*.lcov
-
-# logs
-logs
-_.log
-report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
+# Packaging / build
+build/
+dist/
+*.egg-info/
 
 # dotenv environment variable files
 .env
-.env.development.local
-.env.test.local
-.env.production.local
-.env.local
+.env.*
 
-# caches
-.eslintcache
-.cache
-*.tsbuildinfo
-
-# IntelliJ based IDEs
-.idea
-
-# Finder (MacOS) folder config
+# IDEs and OS files
+.idea/
 .DS_Store
-
-
-# Files for test 
-./weather.ts 
-./index.ts 
