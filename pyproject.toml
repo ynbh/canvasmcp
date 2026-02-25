@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "canvasmcp"
+version = "0.1.0"
+description = "Python Canvas MCP server for Canvas LMS"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "canvasapi>=3.4.0",
+  "fastmcp>=2.12.2",
+]
+
+[project.scripts]
+canvas-mcp = "mcp_server:main"
+
+[tool.uv]
+package = true
+
+[tool.setuptools]
+py-modules = [
+  "canvas_api",
+  "canvas_tools",
+  "canvas_urls",
+  "mcp_server",
+]
