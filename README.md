@@ -1,137 +1,81 @@
-# canvasmcp (Python + uv)
+# canvasmcp
 
-`canvasmcp` is a FastMCP server for Canvas with:
-- FastMCP server exposing Canvas tools over MCP
-- `uv` workflow for dependency management and running
+FastMCP server that exposes Canvas LMS tools over MCP.
 
-## MCP Server Overview
-
-The server exposes typed tools that wrap Canvas API calls.
-An MCP client sends tool calls (for example `list_courses` or `canvas_get_page`) and receives structured JSON responses.
-Authentication is done with your Canvas API token via environment variables.
-
-## Prereqs
-
-- Python 3.11+
-- `uv` installed
-- Canvas host:
-  - `CANVAS_BASE_URL` (example: `https://school.instructure.com`)
-  - If omitted, defaults to `https://canvas.instructure.com`
-
-## Auth
-
-Use Canvas API token auth.
-
-Set:
-
-```bash
-export CANVAS_API_TOKEN="..."
-```
-
-Also supported: `CANVAS_API_KEY`, `canvas_api_token`, `canvas_api_key`.
-
-Transport does not change Canvas auth. Whether you run `stdio` or HTTP, the
-server process must have a Canvas token in its environment.
-
-## Install
+## Setup
 
 ```bash
 uv sync
 ```
 
-## Environment
+## Auth
 
-`.env` example:
-
-```bash
-CANVAS_BASE_URL=https://canvas.instructure.com
-CANVAS_API_TOKEN=...
-```
-
-## Run MCP server (stdio)
+### Option 1: API Token
 
 ```bash
-uv run --env-file .env canvas-mcp
+CANVAS_API_TOKEN=your_token_here
 ```
 
-Or with the repo script (loads `.env`):
+Also accepts: `CANVAS_API_KEY`, `canvas_api_token`, `canvas_api_key`.
+
+### Option 2: Browser Session Cookies
+
+Use this when you don't have an API token. Grab `canvas_session` and `_csrf_token` from your browser's cookies (DevTools → Application → Cookies).
 
 ```bash
-./scripts/start_mcp_server.sh
+CANVAS_AUTH_MODE=session
+CANVAS_SESSION_COOKIE=your_canvas_session_cookie
+CANVAS_CSRF_TOKEN=your_csrf_token
 ```
 
-## Switch Transport (stdio vs HTTP)
+> **Note:** Session cookies expire when you log out or the session times out. You'll need to re-grab them when that happens.
 
-Default transport is `stdio`.
-
-Run as HTTP (`streamable-http`) on port `8000`:
-
-```bash
-MCP_TRANSPORT=streamable-http MCP_HOST=0.0.0.0 MCP_PORT=8000 \
-uv run --env-file .env canvas-mcp
-```
-
-Equivalent via the startup script:
-
-```bash
-MCP_TRANSPORT=streamable-http MCP_HOST=0.0.0.0 MCP_PORT=8000 \
-./scripts/start_mcp_server.sh
-```
-
-Supported `MCP_TRANSPORT` values:
-- `stdio` (default)
-- `http`
-- `sse`
-- `streamable-http`
-
-## API Token With HTTP Transport
-
-HTTP transport changes only how MCP clients connect to this server. Canvas auth
-is still done by this server calling Canvas with your token.
-
-Example:
-
-```bash
-CANVAS_BASE_URL="https://school.instructure.com" \
-CANVAS_API_TOKEN="YOUR_CANVAS_TOKEN" \
-MCP_TRANSPORT=streamable-http MCP_HOST=0.0.0.0 MCP_PORT=8000 \
-uv run canvas-mcp
-```
-
-Using `.env` is usually cleaner for both modes:
+### Base URL
 
 ```bash
 CANVAS_BASE_URL=https://school.instructure.com
-CANVAS_API_TOKEN=YOUR_CANVAS_TOKEN
-MCP_TRANSPORT=streamable-http
-MCP_HOST=0.0.0.0
-MCP_PORT=8000
 ```
 
-## Supported Platforms
+Defaults to `https://canvas.instructure.com` if omitted.
 
-`canvasmcp` works with any MCP client that supports command-based (`stdio`) servers.
-
-Verified:
-- Codex CLI / Codex app MCP integration
-- FastMCP CLI (`fastmcp list`, `fastmcp call`)
-
-Usually compatible (if MCP stdio is supported by your client version):
-- Claude Desktop
-- Cursor
-- Windsurf
-- Cline-compatible MCP clients
-
-### Codex setup
+## `.env` Example
 
 ```bash
-codex mcp add canvasmcp -- /absolute/path/to/canvasmcp/scripts/start_mcp_server.sh
-codex mcp list
+CANVAS_BASE_URL=https://school.instructure.com
+
+# API token auth
+CANVAS_API_TOKEN=your_token
+
+# OR session cookie auth
+# CANVAS_AUTH_MODE=session
+# CANVAS_SESSION_COOKIE=...
+# CANVAS_CSRF_TOKEN=...
 ```
 
-### Generic MCP client setup
+## Run
 
-Most clients accept a config block like this:
+```bash
+uv run --env-file .env canvas-mcp
+```
+
+Or:
+
+```bash
+./scripts/start_mcp_server.sh
+```
+
+### HTTP Transport
+
+Default is `stdio`. To run as HTTP:
+
+```bash
+MCP_TRANSPORT=streamable-http MCP_HOST=0.0.0.0 MCP_PORT=8000 \
+uv run --env-file .env canvas-mcp
+```
+
+Supported transports: `stdio`, `http`, `sse`, `streamable-http`.
+
+## MCP Client Setup
 
 ```json
 {
@@ -143,50 +87,34 @@ Most clients accept a config block like this:
 }
 ```
 
-## MCP Tools
+## Tools
 
-Current tools exposed by `canvas-mcp`:
+| Tool                                                   | Description                                      |
+| ------------------------------------------------------ | ------------------------------------------------ |
+| `get_today()`                                          | Today's date in ISO format                       |
+| `list_courses(favorites_only, search, limit)`          | List courses                                     |
+| `resolve_course(query, favorites_only, limit)`         | Fuzzy-match a course by name                     |
+| `get_course_overview(course_id)`                       | Course-level metadata and teacher info           |
+| `get_course_syllabus(course_id, ...)`                  | Syllabus metadata and optional syllabus body     |
+| `list_course_assignments(course_id, ...)`              | List assignments                                 |
+| `get_assignment_details(course_id, assignment_id, ...)` | Full assignment details                          |
+| `list_course_pages(course_id, ...)`                    | List course pages                                |
+| `canvas_get_page(course_id, url_or_id, ...)`           | Get a specific wiki page (pages URLs only)       |
+| `list_discussion_topics(course_id, ...)`               | List discussions with exact-title/search filters |
+| `get_discussion_entries(course_id, topic_id, ...)`     | Get discussion thread entries and replies        |
+| `list_course_files(course_id, ...)`                    | List files                                       |
+| `download_course_file(course_id, file_id, ...)`        | Download a file to local temp storage            |
+| `list_course_folders(course_id, limit)`                | List folders                                     |
+| `list_assignment_groups(course_id, ...)`               | List grading groups and optional assignments     |
+| `list_course_submissions(course_id, ...)`              | List submissions for a student                   |
+| `get_course_grade_summary(course_id, ...)`             | Grade summary + assignment-group breakdown       |
+| `list_modules(course_id, ...)`                         | List modules with optional items                 |
+| `list_announcements(course_ids, ...)`                  | List announcements                               |
+| `list_calendar_events(course_ids, ...)`                | List calendar events                             |
+| `list_course_people(course_id, ...)`                   | List users in a course                           |
+| `resolve_canvas_url(url, fetch_details)`               | Parse Canvas URL and optionally fetch details    |
+| `get_course_context_snapshot(course_id, ...)`          | Aggregated course context for quick orientation  |
 
-1. `get_today()`
-2. `list_courses(favorites_only=True, search=None, limit=50)`
-3. `resolve_course(query, favorites_only=True, limit=5)`
-4. `list_course_assignments(course_id, search=None, bucket=None, include_submission=False, limit=100)`
-5. `get_assignment_details(course_id, assignment_id, include_submission=False)`
-6. `list_course_files(course_id, search=None, sort=None, order=None, limit=100)`
-7. `download_course_file(course_id, file_id, force_refresh=False)`
-8. `list_course_folders(course_id, limit=150)`
-9. `list_modules(course_id, search=None, include_items=False, include_content_details=False, limit=100, items_limit=100)`
-10. `canvas_get_page(course_id, url_or_id, force_as_id=False)`
-11. `list_announcements(course_ids, start_date=None, end_date=None, active_only=True, limit=100)`
-12. `list_calendar_events(course_ids=None, type=None, start_date=None, end_date=None, all_events=None, limit=100)`
-13. `list_course_people(course_id, search=None, enrollment_types=None, include_email=True, limit=100)`
+`canvas_get_page` does not fetch assignment submission preview routes. Use `resolve_canvas_url` for routing those URLs to the right tool.
 
-## File Downloads (MCP)
-
-- `download_course_file(course_id, file_id, force_refresh?)`
-- Files are saved in the system temp directory under `canvas_files_{user}`.
-- Files are kept until manually removed.
-
-## Deployment
-
-There are two deployment modes:
-
-1. Local sidecar (recommended for desktop MCP clients)
-- Run on the same machine as your MCP client:
-  - `./scripts/start_mcp_server.sh`
-- This is the default and uses `stdio`.
-
-2. Network service (for hosted setups)
-- `mcp_server.py` supports non-stdio transports through env vars:
-  - `MCP_TRANSPORT=streamable-http` (or `http`, `sse`)
-  - `MCP_HOST=0.0.0.0`
-  - `MCP_PORT=8000`
-- Canvas auth still requires `CANVAS_API_TOKEN` (or alias vars) in the server environment.
-- Example:
-
-```bash
-MCP_TRANSPORT=streamable-http MCP_HOST=0.0.0.0 MCP_PORT=8000 \
-uv run --env-file .env canvas-mcp
-```
-
-For production deployment, put the service behind a reverse proxy/TLS layer and restrict network access.
+For `list_course_submissions` with `student_id` other than `self`, Canvas must grant your token/role permission to read other students' submissions in that course.
