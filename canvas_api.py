@@ -78,6 +78,7 @@ class CanvasClient:
         http_session = getattr(requester, "_session", None)
         if http_session is not None:
             from urllib.parse import urlparse
+
             domain = urlparse(self._root_url).hostname or ""
             http_session.cookies.set("canvas_session", session_cookie, domain=domain)
             http_session.cookies.set("_csrf_token", csrf_token, domain=domain)

@@ -180,7 +180,9 @@ def _id_aliases(raw_id: str, *, course_id: str | None = None) -> list[str]:
     return candidates
 
 
-def _candidate_ids_for_lookup(raw_id: str, *, course_id: str | None = None) -> list[str]:
+def _candidate_ids_for_lookup(
+    raw_id: str, *, course_id: str | None = None
+) -> list[str]:
     aliases = _id_aliases(raw_id, course_id=course_id)
     if not aliases:
         return []
@@ -225,7 +227,9 @@ def _first_non_none(*values: Any) -> Any:
     return None
 
 
-def _map_discussion_entry(entry: dict[str, Any], include_replies: bool) -> dict[str, Any]:
+def _map_discussion_entry(
+    entry: dict[str, Any], include_replies: bool
+) -> dict[str, Any]:
     mapped = {
         "id": str(entry.get("id", "")),
         "created_at": entry.get("created_at"),
@@ -1064,7 +1068,9 @@ def get_discussion_entries(args: dict[str, Any]) -> dict[str, Any]:
     for topic in all_topics:
         topic_aliases = _id_aliases(str(topic.get("id", "")), course_id=course_id)
         assignment_id = (
-            str(topic["assignment_id"]) if topic.get("assignment_id") is not None else ""
+            str(topic["assignment_id"])
+            if topic.get("assignment_id") is not None
+            else ""
         )
         assignment_aliases = _id_aliases(assignment_id, course_id=course_id)
         if any(
@@ -1316,7 +1322,7 @@ def list_assignment_groups(args: dict[str, Any]) -> dict[str, Any]:
     for group in groups:
         assignments = []
         if include_assignments:
-            for assignment in (group.get("assignments") or []):
+            for assignment in group.get("assignments") or []:
                 if not isinstance(assignment, dict):
                     continue
                 assignment_id = str(assignment.get("id", ""))
