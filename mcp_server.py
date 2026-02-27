@@ -135,6 +135,38 @@ def list_course_pages(
     )
 
 
+# tool: list left-sidebar navigation tabs for a course.
+@mcp.tool()
+def list_course_tabs(
+    course_id: str,
+    limit: int = 100,
+) -> dict:
+    return dispatch_tool_call(
+        "list_course_tabs",
+        {
+            "course_id": course_id,
+            "limit": limit,
+        },
+    )
+
+
+# tool: fetch one navigation tab and optionally resolve/fetch its target.
+@mcp.tool()
+def get_course_tab(
+    course_id: str,
+    tab_id: str,
+    include_target: bool = True,
+) -> dict:
+    return dispatch_tool_call(
+        "get_course_tab",
+        {
+            "course_id": course_id,
+            "tab_id": tab_id,
+            "include_target": include_target,
+        },
+    )
+
+
 # tool: fetch a single course wiki page by slug or page id.
 @mcp.tool()
 def canvas_get_page(

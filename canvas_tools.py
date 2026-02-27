@@ -77,6 +77,20 @@ def _map_course(course: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _map_course_tab(tab: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": str(tab.get("id", "")),
+        "label": tab.get("label"),
+        "type": tab.get("type"),
+        "position": tab.get("position"),
+        "hidden": tab.get("hidden"),
+        "visibility": tab.get("visibility"),
+        "url": tab.get("url"),
+        "full_url": tab.get("full_url"),
+        "html_url": tab.get("html_url"),
+    }
+
+
 def _relevance_score(query: str, course: dict[str, Any]) -> float:
     q = _normalize(query)
     if not q:
@@ -224,6 +238,223 @@ def _first_non_none(*values: Any) -> Any:
     for value in values:
         if value is not None:
             return value
+    return None
+
+
+def _first_non_empty_str(*values: Any) -> str:
+    for value in values:
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text:
+            return text
+    return ""
+
+
+def _course_tab_target_url(tab_id: str, tab: dict[str, Any]) -> str:
+    target_url = _first_non_empty_str(
+        tab.get("html_url"),
+        tab.get("full_url"),
+        tab.get("url"),
+    )
+    if (
+        tab_id.strip().lower() == "home"
+        and re.fullmatch(r"(?:https?://[^/]+)?/courses/\d+", target_url.rstrip("/"))
+    ):
+        return f"{target_url.rstrip('/')}/home"
+    return target_url
+
+
+def _parse_canvas_course_resource(
+    parts: list[str],
+) -> tuple[str | None, str | None, str | None]:
+    if len(parts) < 2 or parts[0] != "courses":
+        return None, None, None
+
+    course_id_raw = parts[1]
+    if len(parts) == 2:
+        return course_id_raw, "course", parts[1]
+
+    section = parts[2]
+    top_level_map = {
+        "syllabus": ("syllabus", "syllabus"),
+        "home": ("front_page", "front_page"),
+        "grades": ("course_grades", "grades"),
+        "users": ("course_people", "users"),
+    }
+    if section in top_level_map:
+        resource_type, resource_id_raw = top_level_map[section]
+        return course_id_raw, resource_type, resource_id_raw
+    if section == "discussion_topics" and len(parts) == 3:
+        return course_id_raw, "discussion_topics_index", "discussion_topics"
+    if section == "pages" and len(parts) == 3:
+        return course_id_raw, "pages_index", "pages"
+
+    if len(parts) >= 4:
+        if section == "assignments" and parts[3] == "syllabus":
+            return course_id_raw, "syllabus", "syllabus"
+
+        if section in {
+            "assignments",
+            "discussion_topics",
+            "files",
+            "quizzes",
+            "modules",
+            "pages",
+            "announcements",
+        }:
+            resource_type = section[:-1] if section.endswith("s") else section
+            resource_id_raw = parts[3]
+            if section == "modules" and len(parts) >= 5 and parts[3] == "items":
+                return course_id_raw, "module_item", parts[4]
+            if (
+                section == "assignments"
+                and len(parts) >= 6
+                and parts[4] == "submissions"
+                and parts[5]
+            ):
+                return course_id_raw, "assignment_submission", parts[3]
+            return course_id_raw, resource_type, resource_id_raw
+
+    return course_id_raw, "course_route", parts[2]
+
+
+def _recommended_tool_for_resource(resource_type: str | None) -> str | None:
+    return {
+        "assignment": "get_assignment_details",
+        "discussion_topic": "get_discussion_entries",
+        "discussion_topics_index": "list_discussion_topics",
+        "page": "canvas_get_page",
+        "pages_index": "list_course_pages",
+        "file": "download_course_file",
+        "syllabus": "get_course_syllabus",
+        "course_grades": "get_course_grade_summary",
+        "course_people": "list_course_people",
+        "front_page": "get_course_tab",
+        "course": "get_course_overview",
+        "assignment_submission": "list_course_submissions",
+    }.get(resource_type)
+
+
+def _resolve_canvas_resource_details(
+    *,
+    course_id: str,
+    resource_type: str,
+    resource_id: str | None,
+    resource_id_raw: str | None,
+) -> dict[str, Any] | None:
+    if resource_type == "course":
+        return get_course_overview({"course_id": course_id})
+    if resource_type == "front_page":
+        page = _canvas_client().get_front_page(course_id=course_id)
+        return {
+            "course_id": course_id,
+            "page": {
+                "page_id": str(page.get("page_id", "")),
+                "url": page.get("url"),
+                "title": page.get("title"),
+                "html_url": page.get("html_url"),
+                "body": page.get("body"),
+            },
+        }
+    if resource_type == "syllabus":
+        return get_course_syllabus({"course_id": course_id, "include_body": True})
+    if resource_type == "course_grades":
+        return get_course_grade_summary({"course_id": course_id})
+    if resource_type == "course_people":
+        return list_course_people({"course_id": course_id, "limit": 100})
+    if resource_type == "discussion_topics_index":
+        return list_discussion_topics({"course_id": course_id, "limit": 100})
+    if resource_type == "pages_index":
+        return list_course_pages({"course_id": course_id, "limit": 100})
+
+    if resource_type == "assignment" and resource_id:
+        assignment = None
+        for candidate in _candidate_ids_for_lookup(resource_id, course_id=course_id):
+            try:
+                assignment = _canvas_client().get_assignment(
+                    course_id=course_id,
+                    assignment_id=candidate,
+                    include_submission=False,
+                )
+                break
+            except CanvasAPIError:
+                continue
+        if assignment:
+            return {
+                "course_id": course_id,
+                "assignment": {
+                    "id": str(assignment.get("id", "")),
+                    "name": assignment.get("name"),
+                    "due_at": assignment.get("due_at"),
+                    "points_possible": assignment.get("points_possible"),
+                    "html_url": assignment.get("html_url"),
+                },
+            }
+        return None
+
+    if resource_type == "discussion_topic" and resource_id:
+        view = None
+        for candidate in _candidate_ids_for_lookup(resource_id, course_id=course_id):
+            try:
+                view = _canvas_client().get_discussion_topic_view(
+                    course_id=course_id,
+                    topic_id=candidate,
+                )
+                break
+            except CanvasAPIError:
+                continue
+        if view:
+            return {
+                "course_id": course_id,
+                "topic": {
+                    "id": str(view.get("id", "")),
+                    "title": view.get("title"),
+                    "html_url": view.get("html_url"),
+                },
+            }
+        return None
+
+    if resource_type == "page" and resource_id_raw:
+        page = _canvas_client().get_page(
+            course_id=course_id,
+            url_or_id=resource_id_raw,
+            force_as_id=False,
+        )
+        return {
+            "course_id": course_id,
+            "page": {
+                "page_id": str(page.get("page_id", "")),
+                "url": page.get("url"),
+                "title": page.get("title"),
+                "html_url": page.get("html_url"),
+            },
+        }
+
+    if resource_type == "file" and resource_id:
+        file_info = None
+        for candidate in _candidate_ids_for_lookup(resource_id, course_id=course_id):
+            try:
+                file_info = _canvas_client().get_file(
+                    course_id=course_id,
+                    file_id=candidate,
+                )
+                break
+            except CanvasAPIError:
+                continue
+        if file_info:
+            return {
+                "course_id": course_id,
+                "file": {
+                    "id": str(file_info.get("id", "")),
+                    "display_name": file_info.get("display_name"),
+                    "filename": file_info.get("filename"),
+                    "size": file_info.get("size"),
+                    "url": file_info.get("url"),
+                },
+            }
+        return None
+
     return None
 
 
@@ -862,6 +1093,48 @@ def list_course_pages(args: dict[str, Any]) -> dict[str, Any]:
         for page in pages
     ]
     return {"course_id": course_id, "count": len(items), "pages": items}
+
+
+# tool handler: list course navigation tabs (left sidebar entries).
+def list_course_tabs(args: dict[str, Any]) -> dict[str, Any]:
+    course_id = str(args.get("course_id", "")).strip()
+    if not course_id:
+        return {"error": "course_id is required"}
+
+    limit = _clamp(args.get("limit"), 100)
+    tabs = _canvas_client().list_tabs(
+        course_id=course_id,
+        limit=limit,
+    )
+    items = [_map_course_tab(tab) for tab in tabs]
+    return {"course_id": course_id, "count": len(items), "tabs": items}
+
+
+# tool handler: fetch one course navigation tab and optionally resolve/fetch target details.
+def get_course_tab(args: dict[str, Any]) -> dict[str, Any]:
+    course_id = str(args.get("course_id", "")).strip()
+    tab_id = str(args.get("tab_id", "")).strip()
+    if not course_id:
+        return {"error": "course_id is required"}
+    if not tab_id:
+        return {"error": "tab_id is required"}
+
+    include_target = bool(args.get("include_target", True))
+    tab = _canvas_client().get_tab(course_id=course_id, tab_id=tab_id)
+    mapped_tab = _map_course_tab(tab)
+
+    target = None
+    if include_target:
+        target_url = _course_tab_target_url(tab_id=tab_id, tab=mapped_tab)
+        if target_url:
+            target = resolve_canvas_url({"url": target_url, "fetch_details": True})
+
+    return {
+        "course_id": course_id,
+        "tab_id": tab_id,
+        "tab": mapped_tab,
+        "target": target,
+    }
 
 
 # tool handler: list discussion topics for a course.
@@ -1692,64 +1965,15 @@ def resolve_canvas_url(args: dict[str, Any]) -> dict[str, Any]:
     path = re.sub(r"^api/v1/", "", path)
     parts = [part for part in path.split("/") if part]
 
-    course_id_raw = None
-    resource_type = None
-    resource_id_raw = None
-    if len(parts) >= 2 and parts[0] == "courses":
-        course_id_raw = parts[1]
-    if len(parts) >= 4 and parts[0] == "courses":
-        section = parts[2]
-        if section in {
-            "assignments",
-            "discussion_topics",
-            "files",
-            "quizzes",
-            "modules",
-            "pages",
-            "announcements",
-        }:
-            resource_type = section[:-1] if section.endswith("s") else section
-            resource_id_raw = parts[3]
-            if section == "modules" and len(parts) >= 5 and parts[3] == "items":
-                resource_type = "module_item"
-                resource_id_raw = parts[4]
-            if (
-                section == "assignments"
-                and len(parts) >= 6
-                and parts[4] == "submissions"
-                and parts[5]
-            ):
-                resource_type = "assignment_submission"
-                resource_id_raw = parts[3]
+    course_id_raw, resource_type, resource_id_raw = _parse_canvas_course_resource(parts)
 
-    if resource_type is None and len(parts) >= 2 and parts[0] == "courses":
-        resource_type = "course"
-        resource_id_raw = parts[1]
-
-    course_id = (
-        _expand_canvas_id(course_id_raw, course_id=course_id_raw)
-        if course_id_raw
-        else None
-    )
+    course_id = str(course_id_raw).strip() if course_id_raw else None
     resource_id = (
         _expand_canvas_id(resource_id_raw, course_id=course_id)
         if resource_id_raw
         else None
     )
-
-    recommended_tool = None
-    if resource_type == "assignment":
-        recommended_tool = "get_assignment_details"
-    elif resource_type == "discussion_topic":
-        recommended_tool = "get_discussion_entries"
-    elif resource_type == "page":
-        recommended_tool = "canvas_get_page"
-    elif resource_type == "file":
-        recommended_tool = "download_course_file"
-    elif resource_type == "course":
-        recommended_tool = "get_course_overview"
-    elif resource_type == "assignment_submission":
-        recommended_tool = "list_course_submissions"
+    recommended_tool = _recommended_tool_for_resource(resource_type)
 
     fetch_details = bool(args.get("fetch_details", True))
     details: dict[str, Any] | None = None
@@ -1757,94 +1981,12 @@ def resolve_canvas_url(args: dict[str, Any]) -> dict[str, Any]:
 
     if fetch_details and course_id and resource_type:
         try:
-            if resource_type == "course":
-                details = get_course_overview({"course_id": course_id})
-            elif resource_type == "assignment" and resource_id:
-                assignment = None
-                for candidate in _candidate_ids_for_lookup(
-                    resource_id, course_id=course_id
-                ):
-                    try:
-                        assignment = _canvas_client().get_assignment(
-                            course_id=course_id,
-                            assignment_id=candidate,
-                            include_submission=False,
-                        )
-                        break
-                    except CanvasAPIError:
-                        continue
-                if assignment:
-                    details = {
-                        "course_id": course_id,
-                        "assignment": {
-                            "id": str(assignment.get("id", "")),
-                            "name": assignment.get("name"),
-                            "due_at": assignment.get("due_at"),
-                            "points_possible": assignment.get("points_possible"),
-                            "html_url": assignment.get("html_url"),
-                        },
-                    }
-            elif resource_type == "discussion_topic" and resource_id:
-                view = None
-                for candidate in _candidate_ids_for_lookup(
-                    resource_id, course_id=course_id
-                ):
-                    try:
-                        view = _canvas_client().get_discussion_topic_view(
-                            course_id=course_id,
-                            topic_id=candidate,
-                        )
-                        break
-                    except CanvasAPIError:
-                        continue
-                if view:
-                    details = {
-                        "course_id": course_id,
-                        "topic": {
-                            "id": str(view.get("id", "")),
-                            "title": view.get("title"),
-                            "html_url": view.get("html_url"),
-                        },
-                    }
-            elif resource_type == "page" and resource_id_raw:
-                page = _canvas_client().get_page(
-                    course_id=course_id,
-                    url_or_id=resource_id_raw,
-                    force_as_id=False,
-                )
-                details = {
-                    "course_id": course_id,
-                    "page": {
-                        "page_id": str(page.get("page_id", "")),
-                        "url": page.get("url"),
-                        "title": page.get("title"),
-                        "html_url": page.get("html_url"),
-                    },
-                }
-            elif resource_type == "file" and resource_id:
-                file_info = None
-                for candidate in _candidate_ids_for_lookup(
-                    resource_id, course_id=course_id
-                ):
-                    try:
-                        file_info = _canvas_client().get_file(
-                            course_id=course_id,
-                            file_id=candidate,
-                        )
-                        break
-                    except CanvasAPIError:
-                        continue
-                if file_info:
-                    details = {
-                        "course_id": course_id,
-                        "file": {
-                            "id": str(file_info.get("id", "")),
-                            "display_name": file_info.get("display_name"),
-                            "filename": file_info.get("filename"),
-                            "size": file_info.get("size"),
-                            "url": file_info.get("url"),
-                        },
-                    }
+            details = _resolve_canvas_resource_details(
+                course_id=course_id,
+                resource_type=resource_type,
+                resource_id=resource_id,
+                resource_id_raw=resource_id_raw,
+            )
         except CanvasAPIError as exc:
             detail_error = str(exc)
 
@@ -2077,6 +2219,35 @@ TOOL_SPECS: list[ToolSpec] = [
             "required": ["course_id"],
         },
         handler=list_course_pages,
+    ),
+    ToolSpec(
+        name="list_course_tabs",
+        description="List navigation tabs in a course (left sidebar entries).",
+        parameters={
+            "type": "object",
+            "properties": {
+                "course_id": {"type": "string"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 300},
+            },
+            "required": ["course_id"],
+        },
+        handler=list_course_tabs,
+    ),
+    ToolSpec(
+        name="get_course_tab",
+        description=(
+            "Get one course navigation tab by id and optionally resolve/fetch the tab target."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "course_id": {"type": "string"},
+                "tab_id": {"type": "string"},
+                "include_target": {"type": "boolean"},
+            },
+            "required": ["course_id", "tab_id"],
+        },
+        handler=get_course_tab,
     ),
     ToolSpec(
         name="list_discussion_topics",

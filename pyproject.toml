@@ -10,6 +10,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
   "canvasapi>=3.4.0",
+  "cryptography>=42.0",
   "fastmcp>=2.12.2",
 ]
 
@@ -19,10 +20,19 @@ canvas-mcp = "mcp_server:main"
 [tool.uv]
 package = true
 
+[dependency-groups]
+dev = [
+  "pytest>=8.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
 [tool.setuptools]
 py-modules = [
   "canvas_api",
   "canvas_tools",
   "canvas_urls",
+  "chrome_cookies",
   "mcp_server",
 ]

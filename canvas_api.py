@@ -43,6 +43,17 @@ def _read_session_cookies() -> tuple[str, str] | None:
     return None
 
 
+def _read_chrome_cookies(base_url: str) -> tuple[str, str] | None:
+    try:
+        from chrome_cookies import read_chrome_cookies
+    except Exception:
+        return None
+    try:
+        return read_chrome_cookies(base_url)
+    except Exception:
+        return None
+
+
 def _is_session_mode() -> bool:
     return os.getenv("CANVAS_AUTH_MODE", "").strip().lower() == "session"
 
@@ -51,7 +62,7 @@ def _is_session_mode() -> bool:
 class CanvasClient:
     token_provider: Callable[[], str]
     base_url: str = DEFAULT_CANVAS_BASE_URL
-    session_cookies: tuple[str, str] | None = None  # (canvas_session, csrf_token)
+    cookie_provider: Callable[[], tuple[str, str] | None] | None = None
     _root_url: str = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -65,10 +76,13 @@ class CanvasClient:
             session.close()
 
     def _inject_session_cookies(self, canvas: Canvas) -> None:
-        """Replace Bearer token auth with browser session cookies."""
-        if not self.session_cookies:
+        """Replace Bearer token auth with fresh browser session cookies."""
+        if not self.cookie_provider:
             return
-        session_cookie, csrf_token = self.session_cookies
+        cookies = self.cookie_provider()
+        if not cookies:
+            return
+        session_cookie, csrf_token = cookies
         requester = getattr(canvas, "_Canvas__requester", None)
         if requester is None:
             return
@@ -271,6 +285,35 @@ class CanvasClient:
             return self._paginate_list(pages, limit=limit)
 
         return self._call_canvas(_load, f"list pages for course {course_id}")
+
+    def list_tabs(
+        self,
+        *,
+        course_id: str,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        def _load(canvas: Canvas) -> list[dict[str, Any]]:
+            course = canvas.get_course(course_id)
+            tabs = course.get_tabs()
+            return self._paginate_list(tabs, limit=limit)
+
+        return self._call_canvas(_load, f"list tabs for course {course_id}")
+
+    def get_tab(
+        self,
+        *,
+        course_id: str,
+        tab_id: str,
+    ) -> dict[str, Any]:
+        def _load(canvas: Canvas) -> dict[str, Any]:
+            course = canvas.get_course(course_id)
+            for tab in course.get_tabs():
+                data = self._item_to_dict(tab)
+                if str(data.get("id", "")).strip() == tab_id:
+                    return data
+            raise CanvasAPIError(f"Tab '{tab_id}' was not found for this course")
+
+        return self._call_canvas(_load, f"get tab {tab_id} for course {course_id}")
 
     def list_discussion_topics(
         self,
@@ -635,6 +678,21 @@ class CanvasClient:
             f"get page {url_or_id} for course {course_id}",
         )
 
+    def get_front_page(
+        self,
+        *,
+        course_id: str,
+    ) -> dict[str, Any]:
+        def _load(canvas: Canvas) -> dict[str, Any]:
+            course = canvas.get_course(course_id)
+            page = course.show_front_page()
+            return self._item_to_dict(page)
+
+        return self._call_canvas(
+            _load,
+            f"get front page for course {course_id}",
+        )
+
     def list_announcements(
         self,
         *,
@@ -722,8 +780,18 @@ class CanvasClient:
 
 def create_canvas_client_from_env() -> CanvasClient:
     base_url = os.getenv("CANVAS_BASE_URL", DEFAULT_CANVAS_BASE_URL)
+    static_token = _read_static_canvas_token()
 
-    # Session cookie mode: use browser cookies instead of API token
+    # 1. Auto-read Chrome cookies (default, no env vars needed)
+    #    Re-reads from Chrome DB on every API call to handle CSRF rotation.
+    if _read_chrome_cookies(base_url):
+        return CanvasClient(
+            token_provider=lambda: static_token or "chrome-session-auth",
+            base_url=base_url,
+            cookie_provider=lambda: _read_chrome_cookies(base_url),
+        )
+
+    # 2. Manual session cookie env vars
     if _is_session_mode():
         cookies = _read_session_cookies()
         if not cookies:
@@ -732,12 +800,12 @@ def create_canvas_client_from_env() -> CanvasClient:
                 "CANVAS_CSRF_TOKEN are not set."
             )
         return CanvasClient(
-            token_provider=lambda: "session-cookie-auth",  # dummy token
+            token_provider=lambda: "session-cookie-auth",
             base_url=base_url,
-            session_cookies=cookies,
+            cookie_provider=_read_session_cookies,
         )
 
-    static_token = _read_static_canvas_token()
+    # 3. API token
     if static_token:
         return CanvasClient(
             token_provider=lambda: static_token,
@@ -745,13 +813,20 @@ def create_canvas_client_from_env() -> CanvasClient:
         )
 
     raise CanvasAPIError(
-        "Canvas auth is not configured. Set CANVAS_API_TOKEN "
-        "(or CANVAS_API_KEY/canvas_api_token/canvas_api_key), "
+        "Canvas auth is not configured. "
+        "Ensure Chrome has Canvas cookies, set CANVAS_API_TOKEN, "
         "or set CANVAS_AUTH_MODE=session with CANVAS_SESSION_COOKIE and CANVAS_CSRF_TOKEN."
     )
 
 
 def ensure_canvas_auth_configured() -> str:
+    base_url = os.getenv("CANVAS_BASE_URL", DEFAULT_CANVAS_BASE_URL)
+
+    # 1. Chrome cookies
+    if _read_chrome_cookies(base_url):
+        return "chrome-session"
+
+    # 2. Manual session env vars
     if _is_session_mode():
         cookies = _read_session_cookies()
         if cookies:
@@ -761,12 +836,13 @@ def ensure_canvas_auth_configured() -> str:
             "CANVAS_CSRF_TOKEN are not set."
         )
 
+    # 3. API token
     static_token = _read_static_canvas_token()
     if static_token:
         return "api-token"
 
     raise CanvasAPIError(
-        "No Canvas authentication found. Set CANVAS_API_TOKEN "
-        "(or CANVAS_API_KEY/canvas_api_token/canvas_api_key), "
+        "No Canvas authentication found. "
+        "Ensure Chrome has Canvas cookies, set CANVAS_API_TOKEN, "
         "or set CANVAS_AUTH_MODE=session with CANVAS_SESSION_COOKIE and CANVAS_CSRF_TOKEN."
     )
