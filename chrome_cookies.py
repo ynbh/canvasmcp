@@ -57,7 +57,9 @@ def _get_chrome_encryption_key() -> bytes | None:
             timeout=30,
         )
         if result.returncode != 0:
-            logger.debug("Could not read Chrome Safe Storage key: %s", result.stderr.strip())
+            logger.debug(
+                "Could not read Chrome Safe Storage key: %s", result.stderr.strip()
+            )
             return None
         chrome_key = result.stdout.strip().encode("utf-8")
         if not chrome_key:
@@ -161,9 +163,7 @@ def _find_chrome_profiles() -> list[Path]:
     return profiles
 
 
-def _read_cookies_from_db(
-    db_path: Path, domain: str, aes_key: bytes
-) -> dict[str, str]:
+def _read_cookies_from_db(db_path: Path, domain: str, aes_key: bytes) -> dict[str, str]:
     """Read and decrypt specific cookies from a Chrome Cookies SQLite file.
 
     Copies the DB to a temp file first to avoid WAL lock issues with Chrome.
@@ -209,7 +209,9 @@ def _read_cookies_from_db(
                 else:
                     encrypted = row["encrypted_value"]
                     if encrypted:
-                        decrypted = _decrypt_cookie_value(encrypted, aes_key, row["host_key"])
+                        decrypted = _decrypt_cookie_value(
+                            encrypted, aes_key, row["host_key"]
+                        )
                         if decrypted:
                             cookies[name] = decrypted
                 if len(cookies) == len(_COOKIE_NAMES):

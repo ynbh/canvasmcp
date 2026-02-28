@@ -219,6 +219,75 @@ def _extract_discussion_topic_id(item: dict[str, Any]) -> str | None:
     return None
 
 
+def _is_announcement_topic(topic: dict[str, Any]) -> bool:
+    return bool(
+        topic.get("announcement")
+        or topic.get("is_announcement")
+        or str(topic.get("discussion_type", "")).casefold() == "announcement"
+    )
+
+
+def _assignment_to_discussion_topic(
+    assignment: dict[str, Any],
+) -> dict[str, Any] | None:
+    discussion_topic_id = _extract_discussion_topic_id(assignment)
+    if not discussion_topic_id:
+        return None
+
+    submission_types = assignment.get("submission_types") or []
+    if "discussion_topic" not in submission_types and not assignment.get(
+        "discussion_topic"
+    ):
+        return None
+
+    discussion_topic_raw = assignment.get("discussion_topic")
+    has_discussion_topic = isinstance(discussion_topic_raw, dict)
+    discussion_topic = discussion_topic_raw if has_discussion_topic else {}
+    assignment_title = str(assignment.get("name") or "").strip()
+
+    title = (
+        discussion_topic.get("title")
+        if has_discussion_topic and discussion_topic.get("title")
+        else assignment_title
+    )
+
+    html_url = discussion_topic.get("html_url")
+    if not html_url:
+        html_url = assignment.get("html_url")
+
+    return {
+        "id": discussion_topic_id,
+        "title": title,
+        "message": discussion_topic.get("message")
+        if has_discussion_topic
+        else assignment.get("description"),
+        "posted_at": discussion_topic.get("posted_at")
+        if has_discussion_topic
+        else None,
+        "last_reply_at": discussion_topic.get("last_reply_at")
+        if has_discussion_topic
+        else None,
+        "delayed_post_at": discussion_topic.get("delayed_post_at")
+        if has_discussion_topic
+        else None,
+        "lock_at": discussion_topic.get("lock_at")
+        if has_discussion_topic
+        else assignment.get("lock_at"),
+        "discussion_type": discussion_topic.get("discussion_type")
+        if has_discussion_topic
+        else "threaded",
+        "published": discussion_topic.get("published")
+        if has_discussion_topic
+        else assignment.get("published"),
+        "locked": discussion_topic.get("locked") if has_discussion_topic else None,
+        "pinned": discussion_topic.get("pinned") if has_discussion_topic else False,
+        "assignment_id": str(assignment.get("id", "")),
+        "points_possible": assignment.get("points_possible"),
+        "html_url": html_url,
+        "source": "assignment_linked",
+    }
+
+
 def _is_forbidden_message(message: str) -> bool:
     lowered = message.casefold()
     return (
@@ -257,9 +326,8 @@ def _course_tab_target_url(tab_id: str, tab: dict[str, Any]) -> str:
         tab.get("full_url"),
         tab.get("url"),
     )
-    if (
-        tab_id.strip().lower() == "home"
-        and re.fullmatch(r"(?:https?://[^/]+)?/courses/\d+", target_url.rstrip("/"))
+    if tab_id.strip().lower() == "home" and re.fullmatch(
+        r"(?:https?://[^/]+)?/courses/\d+", target_url.rstrip("/")
     ):
         return f"{target_url.rstrip('/')}/home"
     return target_url
@@ -1148,118 +1216,76 @@ def list_discussion_topics(args: dict[str, Any]) -> dict[str, Any]:
         return {"error": "search_in must be 'title' or 'title_or_message'"}
 
     limit = _clamp(args.get("limit"), 100)
-    topics = _canvas_client().list_discussion_topics(
+    include_announcements = bool(args.get("include_announcements", False))
+    only_graded = bool(args.get("only_graded", False))
+    exact_title = bool(args.get("exact_title", False))
+    search_value = str(args.get("search") or "").strip()
+    scan_limit = 300
+
+    api_topics = _canvas_client().list_discussion_topics(
         course_id=course_id,
-        search=str(args.get("search")) if args.get("search") else None,
-        only_graded=bool(args.get("only_graded", False)),
-        exact_title=bool(args.get("exact_title", False)),
-        include_announcements=bool(args.get("include_announcements", False)),
-        search_in=search_in,
-        limit=limit,
+        search=None,
+        only_graded=False,
+        exact_title=False,
+        include_announcements=True,
+        search_in="title",
+        limit=scan_limit,
     )
 
-    search_value = str(args.get("search") or "").strip()
-    if not topics and search_value:
-        fallback_assignments = _canvas_client().list_assignments(
-            course_id=course_id,
-            search=search_value,
-            include_submission=False,
-            include_discussion_topic=True,
-            limit=200,
-        )
+    assignments = _canvas_client().list_assignments(
+        course_id=course_id,
+        search=None,
+        include_submission=False,
+        include_discussion_topic=True,
+        limit=scan_limit,
+    )
+    assignment_topics: list[dict[str, Any]] = []
+    for assignment in assignments:
+        topic = _assignment_to_discussion_topic(assignment)
+        if topic is not None:
+            assignment_topics.append(topic)
+
+    topic_by_id: dict[str, dict[str, Any]] = {}
+    for topic in api_topics + assignment_topics:
+        topic_id = str(topic.get("id", "")).strip()
+        if not topic_id or topic_id in topic_by_id:
+            continue
+        topic_by_id[topic_id] = topic
+    topics = list(topic_by_id.values())
+
+    if not include_announcements:
+        topics = [topic for topic in topics if not _is_announcement_topic(topic)]
+
+    if only_graded:
+        topics = [topic for topic in topics if topic.get("assignment_id")]
+
+    if search_value:
         query = search_value.casefold()
-        fallback_topics: list[dict[str, Any]] = []
-        seen_topic_ids: set[str] = set()
-        for assignment in fallback_assignments:
-            discussion_topic_id = _extract_discussion_topic_id(assignment)
-            if not discussion_topic_id:
-                continue
-            submission_types = assignment.get("submission_types") or []
-            if "discussion_topic" not in submission_types and not assignment.get(
-                "discussion_topic"
-            ):
-                continue
-            title = str(assignment.get("name") or "").strip()
-            if bool(args.get("exact_title", False)):
-                if title.casefold() != query:
-                    continue
-            else:
-                in_title = query in title.casefold()
-                in_body = query in str(assignment.get("description") or "").casefold()
-                if not (in_title or (search_in == "title_or_message" and in_body)):
-                    continue
+        query_aliases = set(_id_aliases(search_value, course_id=course_id))
 
-            if discussion_topic_id in seen_topic_ids:
-                continue
-            seen_topic_ids.add(discussion_topic_id)
-            discussion_topic = assignment.get("discussion_topic")
-            fallback_topics.append(
-                {
-                    "id": discussion_topic_id,
-                    "title": (
-                        discussion_topic.get("title")
-                        if isinstance(discussion_topic, dict)
-                        and discussion_topic.get("title")
-                        else title
-                    ),
-                    "message": (
-                        discussion_topic.get("message")
-                        if isinstance(discussion_topic, dict)
-                        else assignment.get("description")
-                    ),
-                    "posted_at": (
-                        discussion_topic.get("posted_at")
-                        if isinstance(discussion_topic, dict)
-                        else None
-                    ),
-                    "last_reply_at": (
-                        discussion_topic.get("last_reply_at")
-                        if isinstance(discussion_topic, dict)
-                        else None
-                    ),
-                    "delayed_post_at": (
-                        discussion_topic.get("delayed_post_at")
-                        if isinstance(discussion_topic, dict)
-                        else None
-                    ),
-                    "lock_at": (
-                        discussion_topic.get("lock_at")
-                        if isinstance(discussion_topic, dict)
-                        else assignment.get("lock_at")
-                    ),
-                    "discussion_type": (
-                        discussion_topic.get("discussion_type")
-                        if isinstance(discussion_topic, dict)
-                        else "threaded"
-                    ),
-                    "published": (
-                        discussion_topic.get("published")
-                        if isinstance(discussion_topic, dict)
-                        else assignment.get("published")
-                    ),
-                    "locked": (
-                        discussion_topic.get("locked")
-                        if isinstance(discussion_topic, dict)
-                        else None
-                    ),
-                    "pinned": (
-                        discussion_topic.get("pinned")
-                        if isinstance(discussion_topic, dict)
-                        else False
-                    ),
-                    "assignment_id": str(assignment.get("id", "")),
-                    "points_possible": assignment.get("points_possible"),
-                    "html_url": (
-                        discussion_topic.get("html_url")
-                        if isinstance(discussion_topic, dict)
-                        and discussion_topic.get("html_url")
-                        else assignment.get("html_url")
-                    ),
-                    "source": "assignment_linked",
-                }
+        def _matches(topic: dict[str, Any]) -> bool:
+            topic_id = str(topic.get("id", ""))
+            topic_aliases = set(_id_aliases(topic_id, course_id=course_id))
+            assignment_value = topic.get("assignment_id")
+            assignment_id = (
+                str(assignment_value) if assignment_value is not None else ""
             )
+            assignment_aliases = set(_id_aliases(assignment_id, course_id=course_id))
+            if query_aliases and query_aliases & (topic_aliases | assignment_aliases):
+                return True
 
-        topics = fallback_topics[:limit]
+            title = str(topic.get("title") or "")
+            message = str(topic.get("message") or "")
+            if exact_title:
+                return title.casefold().strip() == query
+            if search_in == "title_or_message":
+                return query in title.casefold() or query in message.casefold()
+            return query in title.casefold()
+
+        topics = [topic for topic in topics if _matches(topic)]
+
+    topics = topics[:limit]
+
     items = [
         {
             "id": str(topic.get("id", "")),
@@ -1271,11 +1297,7 @@ def list_discussion_topics(args: dict[str, Any]) -> dict[str, Any]:
             "delayed_post_at": topic.get("delayed_post_at"),
             "lock_at": topic.get("lock_at"),
             "discussion_type": topic.get("discussion_type"),
-            "is_announcement": bool(
-                topic.get("announcement")
-                or topic.get("is_announcement")
-                or str(topic.get("discussion_type", "")).casefold() == "announcement"
-            ),
+            "is_announcement": _is_announcement_topic(topic),
             "published": topic.get("published"),
             "locked": topic.get("locked"),
             "pinned": topic.get("pinned"),
@@ -1297,11 +1319,11 @@ def list_discussion_topics(args: dict[str, Any]) -> dict[str, Any]:
         "course_id": course_id,
         "count": len(items),
         "filters": {
-            "search": str(args.get("search")) if args.get("search") else None,
+            "search": search_value or None,
             "search_in": search_in,
-            "exact_title": bool(args.get("exact_title", False)),
-            "only_graded": bool(args.get("only_graded", False)),
-            "include_announcements": bool(args.get("include_announcements", False)),
+            "exact_title": exact_title,
+            "only_graded": only_graded,
+            "include_announcements": include_announcements,
         },
         "topics": items,
     }
