@@ -22,28 +22,7 @@ class CanvasAPIError(RuntimeError):
     pass
 
 
-def _read_static_canvas_token() -> str:
-    return (
-        os.getenv("canvas_api_token", "").strip()
-        or os.getenv("canvas_api_key", "").strip()
-        or os.getenv("CANVAS_API_TOKEN", "").strip()
-        or os.getenv("CANVAS_API_KEY", "").strip()
-    )
-
-
-def _read_session_cookies() -> tuple[str, str] | None:
-    """Read browser session cookies from environment variables.
-
-    Returns (canvas_session, csrf_token) or None if not configured.
-    """
-    session_cookie = os.getenv("CANVAS_SESSION_COOKIE", "").strip()
-    csrf_token = os.getenv("CANVAS_CSRF_TOKEN", "").strip()
-    if session_cookie and csrf_token:
-        return session_cookie, csrf_token
-    return None
-
-
-def _read_chrome_cookies(base_url: str) -> tuple[str, str] | None:
+def _read_chrome_cookies(base_url: str | None) -> tuple[str, str] | None:
     try:
         from chrome_cookies import read_chrome_cookies
     except Exception:
@@ -54,8 +33,22 @@ def _read_chrome_cookies(base_url: str) -> tuple[str, str] | None:
         return None
 
 
-def _is_session_mode() -> bool:
-    return os.getenv("CANVAS_AUTH_MODE", "").strip().lower() == "session"
+def _resolve_canvas_base_url() -> str:
+    configured = os.getenv("CANVAS_BASE_URL", "").strip()
+    if configured:
+        return configured
+    try:
+        from chrome_cookies import detect_canvas_base_url
+    except Exception:
+        detect_canvas_base_url = None
+    if detect_canvas_base_url:
+        detected = detect_canvas_base_url()
+        if detected:
+            return detected
+    raise CanvasAPIError(
+        "Could not determine Canvas base URL from Chrome cookies. "
+        "Set CANVAS_BASE_URL to your school's Canvas domain."
+    )
 
 
 @dataclass(slots=True)
@@ -779,70 +772,26 @@ class CanvasClient:
 
 
 def create_canvas_client_from_env() -> CanvasClient:
-    base_url = os.getenv("CANVAS_BASE_URL", DEFAULT_CANVAS_BASE_URL)
-    static_token = _read_static_canvas_token()
-
-    # 1. Auto-read Chrome cookies (default, no env vars needed)
-    #    Re-reads from Chrome DB on every API call to handle CSRF rotation.
+    base_url = _resolve_canvas_base_url()
     if _read_chrome_cookies(base_url):
         return CanvasClient(
-            token_provider=lambda: static_token or "chrome-session-auth",
+            token_provider=lambda: "chrome-session-auth",
             base_url=base_url,
             cookie_provider=lambda: _read_chrome_cookies(base_url),
         )
 
-    # 2. Manual session cookie env vars
-    if _is_session_mode():
-        cookies = _read_session_cookies()
-        if not cookies:
-            raise CanvasAPIError(
-                "CANVAS_AUTH_MODE=session but CANVAS_SESSION_COOKIE and/or "
-                "CANVAS_CSRF_TOKEN are not set."
-            )
-        return CanvasClient(
-            token_provider=lambda: "session-cookie-auth",
-            base_url=base_url,
-            cookie_provider=_read_session_cookies,
-        )
-
-    # 3. API token
-    if static_token:
-        return CanvasClient(
-            token_provider=lambda: static_token,
-            base_url=base_url,
-        )
-
     raise CanvasAPIError(
-        "Canvas auth is not configured. "
-        "Ensure Chrome has Canvas cookies, set CANVAS_API_TOKEN, "
-        "or set CANVAS_AUTH_MODE=session with CANVAS_SESSION_COOKIE and CANVAS_CSRF_TOKEN."
+        "No Canvas Chrome cookies found. "
+        "Ensure Chrome is logged into Canvas for the configured domain."
     )
 
 
 def ensure_canvas_auth_configured() -> str:
-    base_url = os.getenv("CANVAS_BASE_URL", DEFAULT_CANVAS_BASE_URL)
-
-    # 1. Chrome cookies
+    base_url = _resolve_canvas_base_url()
     if _read_chrome_cookies(base_url):
         return "chrome-session"
 
-    # 2. Manual session env vars
-    if _is_session_mode():
-        cookies = _read_session_cookies()
-        if cookies:
-            return "session-cookie"
-        raise CanvasAPIError(
-            "CANVAS_AUTH_MODE=session but CANVAS_SESSION_COOKIE and/or "
-            "CANVAS_CSRF_TOKEN are not set."
-        )
-
-    # 3. API token
-    static_token = _read_static_canvas_token()
-    if static_token:
-        return "api-token"
-
     raise CanvasAPIError(
         "No Canvas authentication found. "
-        "Ensure Chrome has Canvas cookies, set CANVAS_API_TOKEN, "
-        "or set CANVAS_AUTH_MODE=session with CANVAS_SESSION_COOKIE and CANVAS_CSRF_TOKEN."
+        "Ensure Chrome has Canvas cookies for the configured domain."
     )

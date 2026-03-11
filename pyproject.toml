@@ -9,13 +9,15 @@ description = "Python Canvas MCP server for Canvas LMS"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+  "browser-cookie3>=0.20.1",
   "canvasapi>=3.4.0",
-  "cryptography>=42.0",
   "fastmcp>=2.12.2",
+  "rich>=13.7.0",
+  "typer>=0.12.0",
 ]
 
 [project.scripts]
-canvas-mcp = "mcp_server:main"
+canvas = "canvas_cli:main"
 
 [tool.uv]
 package = true
@@ -35,4 +37,5 @@ py-modules = [
   "canvas_urls",
   "chrome_cookies",
   "mcp_server",
+  "canvas_cli",
 ]

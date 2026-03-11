@@ -6,155 +6,16 @@ Run with: .venv/bin/python -m pytest tests/ -v
 from __future__ import annotations
 
 import os
-import sqlite3
 from pathlib import Path
 from unittest import mock
 
 import pytest
-
-
-@pytest.fixture(autouse=True)
-def _clear_cached_chrome_key():
-    import chrome_cookies
-
-    chrome_cookies._CACHED_CHROME_KEY = None
-    yield
-    chrome_cookies._CACHED_CHROME_KEY = None
+from typer.testing import CliRunner
 
 
 # ---------------------------------------------------------------------------
 # chrome_cookies tests
 # ---------------------------------------------------------------------------
-
-
-class TestChromeEncryptionKey:
-    """Tests for _get_chrome_encryption_key."""
-
-    def test_returns_bytes_on_success(self):
-        with mock.patch("subprocess.run") as mock_run:
-            mock_run.return_value = mock.Mock(returncode=0, stdout="my_secret_key\n")
-            from chrome_cookies import _get_chrome_encryption_key
-
-            key = _get_chrome_encryption_key()
-            assert key == b"my_secret_key"
-
-    def test_returns_none_on_failure(self):
-        with mock.patch("subprocess.run") as mock_run:
-            mock_run.return_value = mock.Mock(returncode=1, stderr="not found")
-            from chrome_cookies import _get_chrome_encryption_key
-
-            assert _get_chrome_encryption_key() is None
-
-    def test_returns_none_on_timeout(self):
-        import subprocess
-
-        with mock.patch(
-            "subprocess.run", side_effect=subprocess.TimeoutExpired("cmd", 30)
-        ):
-            from chrome_cookies import _get_chrome_encryption_key
-
-            assert _get_chrome_encryption_key() is None
-
-
-class TestDeriveAesKey:
-    """Tests for _derive_aes_key."""
-
-    def test_derives_16_byte_key(self):
-        from chrome_cookies import _derive_aes_key
-
-        key = _derive_aes_key(b"test_password")
-        assert len(key) == 16
-        assert isinstance(key, bytes)
-
-    def test_deterministic_output(self):
-        from chrome_cookies import _derive_aes_key
-
-        k1 = _derive_aes_key(b"same_password")
-        k2 = _derive_aes_key(b"same_password")
-        assert k1 == k2
-
-    def test_different_passwords_different_keys(self):
-        from chrome_cookies import _derive_aes_key
-
-        k1 = _derive_aes_key(b"password1")
-        k2 = _derive_aes_key(b"password2")
-        assert k1 != k2
-
-
-class TestDecryptCookieValue:
-    """Tests for _decrypt_cookie_value."""
-
-    def test_empty_value_returns_none(self):
-        from chrome_cookies import _decrypt_cookie_value, _derive_aes_key
-
-        aes_key = _derive_aes_key(b"test")
-        assert _decrypt_cookie_value(b"", aes_key) is None
-
-    def test_plain_utf8_value(self):
-        from chrome_cookies import _decrypt_cookie_value, _derive_aes_key
-
-        aes_key = _derive_aes_key(b"test")
-        # Non-v10 prefix means plain text
-        assert _decrypt_cookie_value(b"plain_cookie", aes_key) == "plain_cookie"
-
-    def test_v10_encrypted_round_trip(self):
-        """Encrypt a value with known key and verify decryption."""
-        from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-        from cryptography.hazmat.backends import default_backend
-
-        from chrome_cookies import (
-            _decrypt_cookie_value,
-            _derive_aes_key,
-            _IV,
-            _V10_PREFIX,
-        )
-
-        password = b"test_chrome_key"
-        aes_key = _derive_aes_key(password)
-        plaintext = b"my_session_value"
-
-        # PKCS7 pad to 16 bytes
-        pad_len = 16 - (len(plaintext) % 16)
-        padded = plaintext + bytes([pad_len] * pad_len)
-
-        cipher = Cipher(
-            algorithms.AES(aes_key), modes.CBC(_IV), backend=default_backend()
-        )
-        encryptor = cipher.encryptor()
-        ciphertext = encryptor.update(padded) + encryptor.finalize()
-
-        encrypted_value = _V10_PREFIX + ciphertext
-        result = _decrypt_cookie_value(encrypted_value, aes_key)
-        assert result == "my_session_value"
-
-    def test_v10_with_host_hash_prefix(self):
-        import hashlib
-
-        from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-        from cryptography.hazmat.backends import default_backend
-
-        from chrome_cookies import (
-            _decrypt_cookie_value,
-            _derive_aes_key,
-            _IV,
-            _V10_PREFIX,
-        )
-
-        host_key = "umd.instructure.com"
-        aes_key = _derive_aes_key(b"test_chrome_key")
-        plaintext = (
-            hashlib.sha256(host_key.encode("utf-8")).digest() + b"csrf_token_value"
-        )
-
-        pad_len = 16 - (len(plaintext) % 16)
-        padded = plaintext + bytes([pad_len] * pad_len)
-        cipher = Cipher(
-            algorithms.AES(aes_key), modes.CBC(_IV), backend=default_backend()
-        )
-        encryptor = cipher.encryptor()
-        encrypted = _V10_PREFIX + encryptor.update(padded) + encryptor.finalize()
-
-        assert _decrypt_cookie_value(encrypted, aes_key, host_key) == "csrf_token_value"
 
 
 class TestDomainFromBaseUrl:
@@ -185,172 +46,52 @@ class TestDomainFromBaseUrl:
         )
 
 
-class TestFindChromeProfiles:
-    """Tests for _find_chrome_profiles."""
-
-    def test_finds_default_and_numbered_profiles(self, tmp_path: Path):
-        chrome_dir = tmp_path / "Google" / "Chrome"
-        (chrome_dir / "Default").mkdir(parents=True)
-        (chrome_dir / "Default" / "Cookies").touch()
-        (chrome_dir / "Profile 1").mkdir()
-        (chrome_dir / "Profile 1" / "Cookies").touch()
-        (chrome_dir / "Profile 2").mkdir()
-        # Profile 2 has no Cookies file
-
-        with mock.patch("chrome_cookies._CHROME_BASE", chrome_dir):
-            from chrome_cookies import _find_chrome_profiles
-
-            profiles = _find_chrome_profiles()
-            assert len(profiles) == 2
-            assert profiles[0] == chrome_dir / "Default" / "Cookies"
-            assert profiles[1] == chrome_dir / "Profile 1" / "Cookies"
-
-    def test_returns_empty_when_no_chrome(self, tmp_path: Path):
-        with mock.patch("chrome_cookies._CHROME_BASE", tmp_path / "nonexistent"):
-            from chrome_cookies import _find_chrome_profiles
-
-            assert _find_chrome_profiles() == []
-
-
-class TestReadCookiesFromDb:
-    """Tests for _read_cookies_from_db with a real SQLite file."""
-
-    def _create_test_db(
-        self, db_path: Path, cookies: list[tuple[str, str, str, bytes]]
-    ):
-        """Create a Chrome-like Cookies DB with test data.
-
-        cookies: list of (host_key, name, value, encrypted_value)
-        """
-        conn = sqlite3.connect(str(db_path))
-        conn.execute(
-            "CREATE TABLE cookies ("
-            "host_key TEXT, name TEXT, value TEXT, encrypted_value BLOB, "
-            "path TEXT DEFAULT '/', expires_utc INTEGER DEFAULT 0, "
-            "is_secure INTEGER DEFAULT 0, is_httponly INTEGER DEFAULT 0, "
-            "samesite INTEGER DEFAULT 0, priority INTEGER DEFAULT 0)"
-        )
-        for host_key, name, value, encrypted_value in cookies:
-            conn.execute(
-                "INSERT INTO cookies (host_key, name, value, encrypted_value) VALUES (?, ?, ?, ?)",
-                (host_key, name, value, encrypted_value),
-            )
-        conn.commit()
-        conn.close()
-
-    def test_reads_plain_cookies(self, tmp_path: Path):
-        from chrome_cookies import _read_cookies_from_db, _derive_aes_key
-
-        db_path = tmp_path / "Cookies"
-        self._create_test_db(
-            db_path,
-            [
-                ("umd.instructure.com", "canvas_session", "session123", b""),
-                ("umd.instructure.com", "_csrf_token", "csrf456", b""),
-            ],
-        )
-        aes_key = _derive_aes_key(b"test")
-        result = _read_cookies_from_db(db_path, "umd.instructure.com", aes_key)
-        assert result == {"canvas_session": "session123", "_csrf_token": "csrf456"}
-
-    def test_reads_encrypted_cookies(self, tmp_path: Path):
-        from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-        from cryptography.hazmat.backends import default_backend
-
-        from chrome_cookies import (
-            _read_cookies_from_db,
-            _derive_aes_key,
-            _IV,
-            _V10_PREFIX,
-        )
-
-        aes_key = _derive_aes_key(b"test_key")
-
-        def encrypt(plaintext: str) -> bytes:
-            data = plaintext.encode("utf-8")
-            pad_len = 16 - (len(data) % 16)
-            padded = data + bytes([pad_len] * pad_len)
-            cipher = Cipher(
-                algorithms.AES(aes_key), modes.CBC(_IV), backend=default_backend()
-            )
-            enc = cipher.encryptor()
-            return _V10_PREFIX + enc.update(padded) + enc.finalize()
-
-        db_path = tmp_path / "Cookies"
-        self._create_test_db(
-            db_path,
-            [
-                ("umd.instructure.com", "canvas_session", "", encrypt("my_session")),
-                ("umd.instructure.com", "_csrf_token", "", encrypt("my_csrf")),
-            ],
-        )
-        result = _read_cookies_from_db(db_path, "umd.instructure.com", aes_key)
-        assert result == {"canvas_session": "my_session", "_csrf_token": "my_csrf"}
-
-    def test_dot_domain_match(self, tmp_path: Path):
-        from chrome_cookies import _read_cookies_from_db, _derive_aes_key
-
-        db_path = tmp_path / "Cookies"
-        self._create_test_db(
-            db_path,
-            [
-                (".umd.instructure.com", "canvas_session", "ses", b""),
-                (".umd.instructure.com", "_csrf_token", "tok", b""),
-            ],
-        )
-        aes_key = _derive_aes_key(b"test")
-        result = _read_cookies_from_db(db_path, "umd.instructure.com", aes_key)
-        assert result == {"canvas_session": "ses", "_csrf_token": "tok"}
-
-    def test_no_matching_cookies(self, tmp_path: Path):
-        from chrome_cookies import _read_cookies_from_db, _derive_aes_key
-
-        db_path = tmp_path / "Cookies"
-        self._create_test_db(
-            db_path,
-            [("other.com", "canvas_session", "val", b"")],
-        )
-        aes_key = _derive_aes_key(b"test")
-        result = _read_cookies_from_db(db_path, "umd.instructure.com", aes_key)
-        assert result == {}
-
-    def test_prefers_latest_cookie_value(self, tmp_path: Path):
-        from chrome_cookies import _read_cookies_from_db, _derive_aes_key
-
-        db_path = tmp_path / "Cookies"
-        self._create_test_db(
-            db_path,
-            [
-                ("umd.instructure.com", "canvas_session", "old_session", b""),
-                ("umd.instructure.com", "_csrf_token", "old_csrf", b""),
-                ("umd.instructure.com", "canvas_session", "new_session", b""),
-                ("umd.instructure.com", "_csrf_token", "new_csrf", b""),
-            ],
-        )
-        aes_key = _derive_aes_key(b"test")
-        result = _read_cookies_from_db(db_path, "umd.instructure.com", aes_key)
-        assert result == {"canvas_session": "new_session", "_csrf_token": "new_csrf"}
-
-
 class TestReadChromeCookies:
-    """Integration-level tests for read_chrome_cookies."""
+    """Tests for the browser_cookie3 adapter."""
 
-    def test_returns_none_when_no_keychain(self):
-        with mock.patch("chrome_cookies._get_chrome_encryption_key", return_value=None):
-            from chrome_cookies import read_chrome_cookies
+    def test_reads_matching_domain(self):
+        from chrome_cookies import read_chrome_cookies
 
-            assert read_chrome_cookies("https://umd.instructure.com") is None
+        def cookie(name: str, value: str, domain: str):
+            return type("Cookie", (), {"name": name, "value": value, "domain": domain})()
 
-    def test_returns_none_when_no_profiles(self):
-        with (
-            mock.patch(
-                "chrome_cookies._get_chrome_encryption_key", return_value=b"key"
-            ),
-            mock.patch("chrome_cookies._find_chrome_profiles", return_value=[]),
-        ):
-            from chrome_cookies import read_chrome_cookies
+        cookies = [
+            cookie("canvas_session", "session123", ".umd.instructure.com"),
+            cookie("_csrf_token", "csrf456", ".umd.instructure.com"),
+        ]
+        with mock.patch("chrome_cookies.browser_cookie3.chrome", return_value=cookies):
+            assert read_chrome_cookies("https://umd.instructure.com") == (
+                "session123",
+                "csrf456",
+            )
 
-            assert read_chrome_cookies("https://umd.instructure.com") is None
+    def test_detect_canvas_base_url_requires_unique_match(self):
+        from chrome_cookies import detect_canvas_base_url
+
+        def cookie(name: str, value: str, domain: str):
+            return type("Cookie", (), {"name": name, "value": value, "domain": domain})()
+
+        cookies = [
+            cookie("canvas_session", "session123", ".umd.instructure.com"),
+            cookie("_csrf_token", "csrf456", ".umd.instructure.com"),
+        ]
+        with mock.patch("chrome_cookies.browser_cookie3.chrome", return_value=cookies):
+            assert detect_canvas_base_url() == "https://umd.instructure.com"
+
+    def test_detect_canvas_base_url_returns_none_for_multiple_domains(self):
+        from chrome_cookies import detect_canvas_base_url
+
+        def cookie(name: str, value: str, domain: str):
+            return type("Cookie", (), {"name": name, "value": value, "domain": domain})()
+
+        cookies = [
+            cookie("canvas_session", "a", ".umd.instructure.com"),
+            cookie("_csrf_token", "b", ".umd.instructure.com"),
+            cookie("canvas_session", "c", ".school.instructure.com"),
+            cookie("_csrf_token", "d", ".school.instructure.com"),
+        ]
+        with mock.patch("chrome_cookies.browser_cookie3.chrome", return_value=cookies):
+            assert detect_canvas_base_url() is None
 
 
 # ---------------------------------------------------------------------------
@@ -431,68 +172,50 @@ class TestCanvasRootUrl:
 
 
 class TestAuthPriority:
-    """Tests for auth configuration priority."""
+    """Tests for Chrome auth configuration."""
 
     def test_chrome_cookies_first(self):
-        """Chrome cookies should be tried before API token."""
         cookies = ("session", "csrf")
-        with mock.patch("canvas_api._read_chrome_cookies", return_value=cookies):
+        with (
+            mock.patch("canvas_api._resolve_canvas_base_url", return_value="https://umd.instructure.com"),
+            mock.patch("canvas_api._read_chrome_cookies", return_value=cookies),
+        ):
             from canvas_api import ensure_canvas_auth_configured
 
             result = ensure_canvas_auth_configured()
             assert result == "chrome-session"
 
-    def test_manual_session_second(self):
-        """Manual session env vars used when Chrome fails."""
+    def test_raises_when_no_chrome_cookies(self):
         with (
+            mock.patch("canvas_api._resolve_canvas_base_url", return_value="https://umd.instructure.com"),
             mock.patch("canvas_api._read_chrome_cookies", return_value=None),
-            mock.patch.dict(
-                os.environ,
-                {
-                    "CANVAS_AUTH_MODE": "session",
-                    "CANVAS_SESSION_COOKIE": "ses",
-                    "CANVAS_CSRF_TOKEN": "csrf",
-                },
-            ),
-        ):
-            from canvas_api import ensure_canvas_auth_configured
-
-            result = ensure_canvas_auth_configured()
-            assert result == "session-cookie"
-
-    def test_api_token_third(self):
-        """API token used when both Chrome and session fail."""
-        with (
-            mock.patch("canvas_api._read_chrome_cookies", return_value=None),
-            mock.patch.dict(
-                os.environ,
-                {
-                    "CANVAS_API_TOKEN": "my_token",
-                    "CANVAS_AUTH_MODE": "",
-                },
-                clear=False,
-            ),
-        ):
-            # Clear session-related vars
-            env = os.environ.copy()
-            env.pop("CANVAS_SESSION_COOKIE", None)
-            env.pop("CANVAS_CSRF_TOKEN", None)
-            with mock.patch.dict(os.environ, env, clear=True):
-                from canvas_api import ensure_canvas_auth_configured
-
-                result = ensure_canvas_auth_configured()
-                assert result == "api-token"
-
-    def test_raises_when_nothing_configured(self):
-        """Should raise CanvasAPIError when no auth is available."""
-        with (
-            mock.patch("canvas_api._read_chrome_cookies", return_value=None),
-            mock.patch.dict(os.environ, {}, clear=True),
         ):
             from canvas_api import CanvasAPIError, ensure_canvas_auth_configured
 
             with pytest.raises(CanvasAPIError):
                 ensure_canvas_auth_configured()
+
+    def test_uses_env_base_url_override(self):
+        with mock.patch.dict(
+            os.environ,
+            {"CANVAS_BASE_URL": "https://umd.instructure.com"},
+            clear=True,
+        ):
+            from canvas_api import _resolve_canvas_base_url
+
+            assert _resolve_canvas_base_url() == "https://umd.instructure.com"
+
+    def test_uses_detected_base_url_when_env_unset(self):
+        with (
+            mock.patch.dict(os.environ, {}, clear=True),
+            mock.patch(
+                "chrome_cookies.detect_canvas_base_url",
+                return_value="https://umd.instructure.com",
+            ),
+        ):
+            from canvas_api import _resolve_canvas_base_url
+
+            assert _resolve_canvas_base_url() == "https://umd.instructure.com"
 
 
 class TestCreateCanvasClientFromEnv:
@@ -500,108 +223,87 @@ class TestCreateCanvasClientFromEnv:
 
     def test_chrome_cookies_sets_cookie_provider(self):
         cookies = ("session_val", "csrf_val")
-        with mock.patch("canvas_api._read_chrome_cookies", return_value=cookies):
+        with (
+            mock.patch("canvas_api._resolve_canvas_base_url", return_value="https://umd.instructure.com"),
+            mock.patch("canvas_api._read_chrome_cookies", return_value=cookies),
+        ):
             from canvas_api import create_canvas_client_from_env
 
             client = create_canvas_client_from_env()
             assert client.cookie_provider is not None
             assert client.cookie_provider() == cookies
+            assert client.base_url == "https://umd.instructure.com"
 
-    def test_api_token_no_cookie_provider(self):
+    def test_raises_without_chrome_cookies(self):
         with (
+            mock.patch("canvas_api._resolve_canvas_base_url", return_value="https://umd.instructure.com"),
             mock.patch("canvas_api._read_chrome_cookies", return_value=None),
-            mock.patch.dict(
-                os.environ,
-                {
-                    "CANVAS_API_TOKEN": "my_token",
-                    "CANVAS_AUTH_MODE": "",
-                },
-                clear=True,
-            ),
         ):
-            from canvas_api import create_canvas_client_from_env
+            from canvas_api import CanvasAPIError, create_canvas_client_from_env
 
-            client = create_canvas_client_from_env()
-            assert client.cookie_provider is None
-            assert client.token_provider() == "my_token"
-
-
-class TestReadStaticCanvasToken:
-    """Tests for _read_static_canvas_token."""
-
-    def test_reads_from_CANVAS_API_TOKEN(self):
-        with mock.patch.dict(os.environ, {"CANVAS_API_TOKEN": "tok123"}, clear=True):
-            from canvas_api import _read_static_canvas_token
-
-            assert _read_static_canvas_token() == "tok123"
-
-    def test_reads_lowercase_variant(self):
-        with mock.patch.dict(os.environ, {"canvas_api_token": "tok_lower"}, clear=True):
-            from canvas_api import _read_static_canvas_token
-
-            assert _read_static_canvas_token() == "tok_lower"
-
-    def test_returns_empty_when_unset(self):
-        with mock.patch.dict(os.environ, {}, clear=True):
-            from canvas_api import _read_static_canvas_token
-
-            assert _read_static_canvas_token() == ""
+            with pytest.raises(CanvasAPIError):
+                create_canvas_client_from_env()
 
 
-class TestIsSessionMode:
-    """Tests for _is_session_mode."""
+class TestGeneratedCli:
+    """Smoke tests for the direct Typer CLI."""
 
-    def test_true_when_set(self):
-        with mock.patch.dict(os.environ, {"CANVAS_AUTH_MODE": "session"}):
-            from canvas_api import _is_session_mode
+    def test_tool_list_outputs_known_tool(self):
+        import canvas_cli
 
-            assert _is_session_mode() is True
+        runner = CliRunner()
+        result = runner.invoke(canvas_cli.app, ["tool", "list"])
+        assert result.exit_code == 0
+        assert "list_courses" in result.stdout
 
-    def test_case_insensitive(self):
-        with mock.patch.dict(os.environ, {"CANVAS_AUTH_MODE": "SESSION"}):
-            from canvas_api import _is_session_mode
+    def test_main_invokes_app(self):
+        import canvas_cli
 
-            assert _is_session_mode() is True
+        with mock.patch.object(canvas_cli, "app") as app:
+            canvas_cli.main()
+            app.assert_called_once_with()
 
-    def test_false_when_unset(self):
-        with mock.patch.dict(os.environ, {}, clear=True):
-            from canvas_api import _is_session_mode
+    def test_courses_command_dispatches_expected_args(self):
+        import canvas_cli
 
-            assert _is_session_mode() is False
-
-
-class TestReadSessionCookies:
-    """Tests for _read_session_cookies."""
-
-    def test_returns_tuple_when_both_set(self):
-        with mock.patch.dict(
-            os.environ,
-            {
-                "CANVAS_SESSION_COOKIE": "ses",
-                "CANVAS_CSRF_TOKEN": "csrf",
-            },
+        runner = CliRunner()
+        with (
+            mock.patch.object(canvas_cli, "_ensure_auth"),
+            mock.patch.object(canvas_cli, "dispatch_tool_call") as dispatch,
         ):
-            from canvas_api import _read_session_cookies
+            dispatch.return_value = {"count": 0, "courses": []}
+            result = runner.invoke(canvas_cli.app, ["courses", "--all", "--limit", "10"])
+        assert result.exit_code == 0
+        dispatch.assert_called_once_with(
+            "list_courses",
+            {"favorites_only": False, "search": None, "limit": 10},
+        )
 
-            assert _read_session_cookies() == ("ses", "csrf")
+    def test_today_does_not_require_auth(self):
+        import canvas_cli
 
-    def test_returns_none_when_missing_csrf(self):
-        with mock.patch.dict(
-            os.environ,
-            {
-                "CANVAS_SESSION_COOKIE": "ses",
-                "CANVAS_CSRF_TOKEN": "",
-            },
+        runner = CliRunner()
+        with (
+            mock.patch.object(canvas_cli, "_ensure_auth") as ensure_auth,
+            mock.patch.object(canvas_cli, "dispatch_tool_call") as dispatch,
         ):
-            from canvas_api import _read_session_cookies
+            dispatch.return_value = {"today": "2026-03-10"}
+            result = runner.invoke(canvas_cli.app, ["today"])
+        assert result.exit_code == 0
+        ensure_auth.assert_not_called()
 
-            assert _read_session_cookies() is None
+    def test_auth_status_reports_env_override(self):
+        import canvas_cli
 
-    def test_returns_none_when_both_missing(self):
-        with mock.patch.dict(os.environ, {}, clear=True):
-            from canvas_api import _read_session_cookies
-
-            assert _read_session_cookies() is None
+        runner = CliRunner()
+        with (
+            mock.patch.dict(os.environ, {"CANVAS_BASE_URL": "https://umd.instructure.com"}),
+            mock.patch.object(canvas_cli, "ensure_canvas_auth_configured", return_value="chrome-session"),
+        ):
+            result = runner.invoke(canvas_cli.app, ["auth-status"])
+            assert result.exit_code == 0
+            assert "chrome-session" in result.stdout
+            assert "umd.instructure.com" in result.stdout
 
 
 # ---------------------------------------------------------------------------

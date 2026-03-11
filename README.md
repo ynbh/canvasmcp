@@ -10,33 +10,16 @@ uv sync
 
 ## Auth
 
-Auth is resolved in priority order:
+The installed CLI command is `canvas`.
 
-### 1. Chrome Cookies (default — zero config)
+Auth is Chrome-only:
 
-If you've logged into Canvas in Chrome, the server **automatically reads** your session cookies from Chrome's local database. No env vars needed — just set `CANVAS_BASE_URL` and go.
+- The CLI reads Canvas cookies from Chrome via `browser_cookie3`.
+- If `CANVAS_BASE_URL` is set, that domain is used.
+- If `CANVAS_BASE_URL` is unset, the CLI tries to auto-detect a single Canvas domain from Chrome cookies.
+- Chrome cookies are read fresh on every request, so session and CSRF rotation are picked up automatically.
 
 > **Note:** macOS will prompt for Keychain access on first run. Click "Allow" or "Always Allow".
-
-### 2. Manual Session Cookies
-
-If Chrome auto-read doesn't work, set cookies manually:
-
-```bash
-CANVAS_AUTH_MODE=session
-CANVAS_SESSION_COOKIE=your_canvas_session_cookie
-CANVAS_CSRF_TOKEN=your_csrf_token
-```
-
-Grab these from DevTools → Application → Cookies. They expire on logout/session timeout.
-
-### 3. API Token
-
-```bash
-CANVAS_API_TOKEN=your_token
-```
-
-Also accepts: `CANVAS_API_KEY`, `canvas_api_token`, `canvas_api_key`.
 
 ### Base URL
 
@@ -44,40 +27,58 @@ Also accepts: `CANVAS_API_KEY`, `canvas_api_token`, `canvas_api_key`.
 CANVAS_BASE_URL=https://school.instructure.com
 ```
 
-Defaults to `https://canvas.instructure.com` if omitted. Set this to your school's Canvas domain.
+If omitted, the CLI attempts to infer the Canvas domain from Chrome cookies. Set it explicitly if you have multiple Canvas domains in Chrome.
 
-## `.env` Example
+## CLI
 
-```bash
-CANVAS_BASE_URL=https://umd.instructure.com
-# That's it — Chrome cookies are auto-read.
-
-# Or fall back to API token:
-# CANVAS_API_TOKEN=your_token
-```
-
-## Run
+List your courses:
 
 ```bash
-uv run --env-file .env canvas-mcp
+uv run canvas courses
 ```
 
-Or:
+Inspect one course:
 
 ```bash
-./scripts/start_mcp_server.sh
+uv run canvas course overview 12345
+uv run canvas course context 12345
 ```
 
-### HTTP Transport
-
-Default is `stdio`. To run as HTTP:
+Work with assignments and discussions:
 
 ```bash
-MCP_TRANSPORT=streamable-http MCP_HOST=0.0.0.0 MCP_PORT=8000 \
-uv run --env-file .env canvas-mcp
+uv run canvas assignments list 12345 --bucket upcoming
+uv run canvas discussion show 12345 67890
 ```
 
-Supported transports: `stdio`, `http`, `sse`, `streamable-http`.
+Use the raw tool escape hatch when needed:
+
+```bash
+uv run canvas tool list
+uv run canvas tool run list_courses --args '{"limit":10}'
+```
+
+Check current auth status:
+
+```bash
+uv run canvas auth-status
+```
+
+## Install
+
+Install the CLI as a tool:
+
+```bash
+uv tool install .
+```
+
+That installs the `canvas` command.
+
+Reinstall after local changes:
+
+```bash
+uv tool install . --reinstall
+```
 
 ## MCP Client Setup
 
@@ -130,4 +131,4 @@ Use course tabs when you need the left-sidebar entries (Home, Syllabus, People, 
 
 `canvas_get_page` does not fetch assignment submission preview routes. Use `resolve_canvas_url` for routing those URLs to the right tool.
 
-For `list_course_submissions` with `student_id` other than `self`, Canvas must grant your token/role permission to read other students' submissions in that course.
+For `list_course_submissions` with `student_id` other than `self`, your Canvas account must have permission to read other students' submissions in that course.
