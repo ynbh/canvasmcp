@@ -475,7 +475,6 @@ def dispatch_tool_call(name: str, args: dict[str, Any] | None = None) -> dict[st
     handler = _TOOL_MAP.get(name)
     if handler is None:
         return {"error": f"Unknown tool: {name}"}
-
     try:
         return handler(args or {})
     except CanvasAPIError as exc:
