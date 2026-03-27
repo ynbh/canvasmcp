@@ -33,6 +33,69 @@ def _read_chrome_cookies(base_url: str | None) -> tuple[str, str] | None:
         return None
 
 
+def _list_canvas_cookie_domains() -> tuple[list[str], str | None]:
+    try:
+        from chrome_cookies import list_canvas_cookie_domains
+    except Exception as exc:
+        detail = str(exc).strip()
+        return [], detail or "Chrome cookie support is unavailable."
+    try:
+        return list_canvas_cookie_domains(), None
+    except Exception as exc:
+        detail = str(exc).strip()
+        return [], detail or "Chrome cookies could not be read."
+
+
+def _format_domain_list(domains: list[str]) -> str:
+    shown = domains[:5]
+    suffix = "" if len(domains) <= 5 else f", +{len(domains) - 5} more"
+    return ", ".join(shown) + suffix
+
+
+def _base_url_inference_error() -> CanvasAPIError:
+    domains, detail = _list_canvas_cookie_domains()
+    if detail:
+        return CanvasAPIError(
+            "Could not inspect Chrome for Canvas sessions. "
+            f"{detail}"
+        )
+    if not domains:
+        return CanvasAPIError(
+            "Could not infer a Canvas site from Chrome. "
+            "Open your school's Canvas in Chrome, make sure you're signed in, and retry."
+        )
+    if len(domains) > 1:
+        return CanvasAPIError(
+            "Found multiple Canvas sites in Chrome: "
+            f"{_format_domain_list(domains)}. "
+            "Auto-detection needs exactly one. Open the target Canvas site in Chrome and retry. "
+            "If you need to pin one explicitly, set CANVAS_BASE_URL."
+        )
+    return CanvasAPIError(
+        "Could not infer a Canvas site from Chrome. "
+        "Open your school's Canvas in Chrome and retry."
+    )
+
+
+def _missing_chrome_session_error(base_url: str) -> CanvasAPIError:
+    domains, detail = _list_canvas_cookie_domains()
+    if detail:
+        return CanvasAPIError(
+            "Could not read Chrome cookies for the resolved Canvas site "
+            f"({base_url}). {detail}"
+        )
+    if not domains:
+        return CanvasAPIError(
+            f"No usable Canvas session was found in Chrome for {base_url}. "
+            "Open that site in Chrome, sign in, and retry."
+        )
+    return CanvasAPIError(
+        f"No usable Canvas session was found in Chrome for {base_url}. "
+        f"Chrome currently has Canvas sessions for: {_format_domain_list(domains)}. "
+        "Sign into the target site in Chrome and retry."
+    )
+
+
 def _resolve_canvas_base_url() -> str:
     configured = os.getenv("CANVAS_BASE_URL", "").strip()
     if configured:
@@ -45,10 +108,7 @@ def _resolve_canvas_base_url() -> str:
         detected = detect_canvas_base_url()
         if detected:
             return detected
-    raise CanvasAPIError(
-        "Could not determine Canvas base URL from Chrome cookies. "
-        "Set CANVAS_BASE_URL to your school's Canvas domain."
-    )
+    raise _base_url_inference_error()
 
 
 @dataclass(slots=True)
@@ -780,10 +840,7 @@ def create_canvas_client_from_env() -> CanvasClient:
             cookie_provider=lambda: _read_chrome_cookies(base_url),
         )
 
-    raise CanvasAPIError(
-        "No Canvas Chrome cookies found. "
-        "Ensure Chrome is logged into Canvas for the configured domain."
-    )
+    raise _missing_chrome_session_error(base_url)
 
 
 def ensure_canvas_auth_configured() -> str:
@@ -791,7 +848,4 @@ def ensure_canvas_auth_configured() -> str:
     if _read_chrome_cookies(base_url):
         return "chrome-session"
 
-    raise CanvasAPIError(
-        "No Canvas authentication found. "
-        "Ensure Chrome has Canvas cookies for the configured domain."
-    )
+    raise _missing_chrome_session_error(base_url)

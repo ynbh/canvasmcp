@@ -65,6 +65,22 @@ class TestReadChromeCookies:
                 "csrf456",
             )
 
+    def test_reads_parent_domain_for_specific_canvas_host(self):
+        from chrome_cookies import read_chrome_cookies
+
+        def cookie(name: str, value: str, domain: str):
+            return type("Cookie", (), {"name": name, "value": value, "domain": domain})()
+
+        cookies = [
+            cookie("canvas_session", "session123", ".instructure.com"),
+            cookie("_csrf_token", "csrf456", ".instructure.com"),
+        ]
+        with mock.patch("chrome_cookies.browser_cookie3.chrome", return_value=cookies):
+            assert read_chrome_cookies("https://umd.instructure.com") == (
+                "session123",
+                "csrf456",
+            )
+
     def test_detect_canvas_base_url_requires_unique_match(self):
         from chrome_cookies import detect_canvas_base_url
 
@@ -92,6 +108,36 @@ class TestReadChromeCookies:
         ]
         with mock.patch("chrome_cookies.browser_cookie3.chrome", return_value=cookies):
             assert detect_canvas_base_url() is None
+
+    def test_detect_canvas_base_url_prefers_specific_domain_over_parent_domain(self):
+        from chrome_cookies import detect_canvas_base_url
+
+        def cookie(name: str, value: str, domain: str):
+            return type("Cookie", (), {"name": name, "value": value, "domain": domain})()
+
+        cookies = [
+            cookie("canvas_session", "parent-session", ".instructure.com"),
+            cookie("_csrf_token", "parent-csrf", ".instructure.com"),
+            cookie("canvas_session", "child-session", ".umd.instructure.com"),
+            cookie("_csrf_token", "child-csrf", ".umd.instructure.com"),
+        ]
+        with mock.patch("chrome_cookies.browser_cookie3.chrome", return_value=cookies):
+            assert detect_canvas_base_url() == "https://umd.instructure.com"
+
+    def test_detect_canvas_base_url_ignores_canvas_user_content_domains(self):
+        from chrome_cookies import detect_canvas_base_url
+
+        def cookie(name: str, value: str, domain: str):
+            return type("Cookie", (), {"name": name, "value": value, "domain": domain})()
+
+        cookies = [
+            cookie("canvas_session", "asset-session", ".cluster47.canvas-user-content.com"),
+            cookie("_csrf_token", "asset-csrf", ".cluster47.canvas-user-content.com"),
+            cookie("canvas_session", "school-session", ".umd.instructure.com"),
+            cookie("_csrf_token", "school-csrf", ".umd.instructure.com"),
+        ]
+        with mock.patch("chrome_cookies.browser_cookie3.chrome", return_value=cookies):
+            assert detect_canvas_base_url() == "https://umd.instructure.com"
 
 
 # ---------------------------------------------------------------------------
@@ -217,6 +263,25 @@ class TestAuthPriority:
 
             assert _resolve_canvas_base_url() == "https://umd.instructure.com"
 
+    def test_inference_error_mentions_chrome_before_env_override(self):
+        with (
+            mock.patch.dict(os.environ, {}, clear=True),
+            mock.patch("chrome_cookies.detect_canvas_base_url", return_value=None),
+            mock.patch(
+                "chrome_cookies.list_canvas_cookie_domains",
+                return_value=["umd.instructure.com", "school.instructure.com"],
+            ),
+        ):
+            from canvas_api import CanvasAPIError, _resolve_canvas_base_url
+
+            with pytest.raises(CanvasAPIError) as excinfo:
+                _resolve_canvas_base_url()
+
+        message = str(excinfo.value)
+        assert "Found multiple Canvas sites in Chrome" in message
+        assert "Open the target Canvas site in Chrome and retry" in message
+        assert "set CANVAS_BASE_URL" in message
+
 
 class TestCreateCanvasClientFromEnv:
     """Tests for create_canvas_client_from_env."""
@@ -299,11 +364,95 @@ class TestGeneratedCli:
         with (
             mock.patch.dict(os.environ, {"CANVAS_BASE_URL": "https://umd.instructure.com"}),
             mock.patch.object(canvas_cli, "ensure_canvas_auth_configured", return_value="chrome-session"),
+            mock.patch(
+                "chrome_cookies.list_canvas_cookie_domains",
+                return_value=["umd.instructure.com"],
+            ),
         ):
             result = runner.invoke(canvas_cli.app, ["auth-status"])
             assert result.exit_code == 0
             assert "chrome-session" in result.stdout
             assert "umd.instructure.com" in result.stdout
+
+    def test_auth_status_returns_json_error_instead_of_exiting(self):
+        import canvas_cli
+        from canvas_api import CanvasAPIError
+
+        runner = CliRunner()
+        with (
+            mock.patch.object(
+                canvas_cli,
+                "ensure_canvas_auth_configured",
+                side_effect=CanvasAPIError("No usable Canvas session"),
+            ),
+            mock.patch(
+                "chrome_cookies.list_canvas_cookie_domains",
+                return_value=["umd.instructure.com"],
+            ),
+        ):
+            result = runner.invoke(canvas_cli.app, ["auth-status"])
+        assert result.exit_code == 0
+        assert '"auth_mode": null' in result.stdout
+        assert "No usable Canvas session" in result.stdout
+
+    def test_courses_command_renders_clean_auth_error(self):
+        import canvas_cli
+        from canvas_api import CanvasAPIError
+
+        runner = CliRunner()
+        with mock.patch.object(
+            canvas_cli,
+            "ensure_canvas_auth_configured",
+            side_effect=CanvasAPIError("Open Canvas in Chrome and retry"),
+        ):
+            result = runner.invoke(canvas_cli.app, ["courses"])
+        assert result.exit_code == 1
+        assert "Error: Open Canvas in Chrome and retry" in result.stdout
+        assert "Traceback" not in result.stdout
+
+
+class TestMcpServerEntrypoint:
+    """Tests for the FastMCP server entrypoint."""
+
+    def test_main_defaults_to_stdio(self):
+        import mcp_server
+
+        with (
+            mock.patch.object(mcp_server, "ensure_canvas_auth_configured"),
+            mock.patch.object(mcp_server.mcp, "run") as run,
+        ):
+            mcp_server.main([])
+
+        run.assert_called_once_with("stdio", show_banner=True)
+
+    def test_main_supports_http_transport(self):
+        import mcp_server
+
+        with (
+            mock.patch.object(mcp_server, "ensure_canvas_auth_configured"),
+            mock.patch.object(mcp_server.mcp, "run") as run,
+        ):
+            mcp_server.main(
+                [
+                    "--transport",
+                    "http",
+                    "--host",
+                    "127.0.0.1",
+                    "--port",
+                    "8000",
+                    "--path",
+                    "/mcp",
+                    "--no-banner",
+                ]
+            )
+
+        run.assert_called_once_with(
+            "http",
+            show_banner=False,
+            host="127.0.0.1",
+            port=8000,
+            path="/mcp",
+        )
 
 
 # ---------------------------------------------------------------------------

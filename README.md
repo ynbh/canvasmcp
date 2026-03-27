@@ -92,6 +92,28 @@ uv tool install . --reinstall
 }
 ```
 
+## Run As An HTTP Server
+
+FastMCP v3 recommends HTTP transport for networked MCP servers. This project now supports that directly from the existing entrypoint:
+
+```bash
+uv run canvas-mcp --transport http --host 127.0.0.1 --port 8000
+```
+
+By default, FastMCP serves the MCP endpoint at `http://127.0.0.1:8000/mcp`.
+
+You can also use the helper script:
+
+```bash
+./scripts/start_mcp_server.sh --transport http --host 127.0.0.1 --port 8000
+```
+
+`stdio` remains the default transport for desktop MCP clients. `sse` is still available for legacy clients:
+
+```bash
+uv run canvas-mcp --transport sse --host 127.0.0.1 --port 8000
+```
+
 ## Tools
 
 | Tool                                                    | Description                                      |

@@ -18,6 +18,7 @@ dependencies = [
 
 [project.scripts]
 canvas = "canvas_cli:main"
+canvas-mcp = "mcp_server:main"
 
 [tool.uv]
 package = true
@@ -38,4 +39,8 @@ py-modules = [
   "chrome_cookies",
   "mcp_server",
   "canvas_cli",
+  "canvas_tool_registry",
 ]
+
+[tool.setuptools.packages.find]
+include = ["tools"]

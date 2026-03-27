@@ -7,8 +7,8 @@ from typing import Annotated, Any
 import typer
 from rich.console import Console
 
-from canvas_api import ensure_canvas_auth_configured
-from canvas_tools import TOOL_SPECS, dispatch_tool_call
+from canvas_api import CanvasAPIError, ensure_canvas_auth_configured
+from canvas_tool_registry import TOOL_SPECS, dispatch_tool_call
 
 app = typer.Typer(
     help="Canvas CLI for local Canvas LMS workflows.",
@@ -32,7 +32,11 @@ TOOL_NAMES = sorted(spec.name for spec in TOOL_SPECS)
 
 
 def _ensure_auth() -> None:
-    ensure_canvas_auth_configured()
+    try:
+        ensure_canvas_auth_configured()
+    except CanvasAPIError as exc:
+        console.print(f"[bold red]Error:[/bold red] {exc}")
+        raise typer.Exit(1) from exc
 
 
 def _print_result(result: dict[str, Any]) -> None:
@@ -45,7 +49,11 @@ def _print_result(result: dict[str, Any]) -> None:
 def _invoke(tool_name: str, args: dict[str, Any] | None = None) -> None:
     if tool_name != "get_today":
         _ensure_auth()
-    _print_result(dispatch_tool_call(tool_name, args or {}))
+    try:
+        _print_result(dispatch_tool_call(tool_name, args or {}))
+    except CanvasAPIError as exc:
+        console.print(f"[bold red]Error:[/bold red] {exc}")
+        raise typer.Exit(1) from exc
 
 
 def _parse_json(value: str | None, *, flag_name: str) -> Any:
@@ -643,9 +651,34 @@ def main() -> None:
 @app.command("auth-status")
 def auth_status() -> None:
     """Show the current auth mode and Canvas base URL override."""
-    base_url = os.getenv("CANVAS_BASE_URL", "").strip() or None
-    mode = ensure_canvas_auth_configured()
-    console.print_json(json.dumps({"auth_mode": mode, "canvas_base_url": base_url}))
+    configured_base_url = os.getenv("CANVAS_BASE_URL", "").strip() or None
+    try:
+        from chrome_cookies import list_canvas_cookie_domains
+    except Exception:
+        detected_domains: list[str] = []
+    else:
+        try:
+            detected_domains = list_canvas_cookie_domains()
+        except Exception:
+            detected_domains = []
+
+    try:
+        mode = ensure_canvas_auth_configured()
+        error = None
+    except CanvasAPIError as exc:
+        mode = None
+        error = str(exc)
+
+    console.print_json(
+        json.dumps(
+            {
+                "auth_mode": mode,
+                "configured_canvas_base_url": configured_base_url,
+                "detected_canvas_domains": detected_domains,
+                "error": error,
+            }
+        )
+    )
 
 
 if __name__ == "__main__":
