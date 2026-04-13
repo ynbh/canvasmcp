@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
-from canvas_api import CanvasAPIError
+from auth import CanvasAPIError
 from tools.common import (
     candidate_ids_for_lookup,
     canvas_client,

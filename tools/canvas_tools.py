@@ -3,6 +3,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from typing import Any
 
+from specs.registry import dispatch_tool_call as _dispatch_tool_call
 from tools import assignments, common, courses, discussions, files, misc
 
 _normalize = common.normalize
@@ -144,6 +145,4 @@ def get_course_context_snapshot(args: dict[str, Any]) -> dict[str, Any]:
 
 
 def dispatch_tool_call(name: str, args: dict | None = None) -> dict:
-    from canvas_tool_registry import dispatch_tool_call as _dispatch_tool_call
-
     return _dispatch_tool_call(name, args)

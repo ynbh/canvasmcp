@@ -8,7 +8,7 @@ import tempfile
 from typing import Any
 from urllib.parse import unquote, urlparse
 
-from canvas_api import CanvasAPIError, create_canvas_client_from_env
+from client import create_canvas_client_from_env
 
 MAX_TOOL_LIMIT = 300
 

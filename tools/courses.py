@@ -6,7 +6,6 @@ from tools.common import (
     canvas_client,
     clamp,
     course_tab_target_url,
-    id_aliases,
     normalize,
 )
 

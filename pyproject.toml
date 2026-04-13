@@ -18,7 +18,7 @@ dependencies = [
 
 [project.scripts]
 canvas = "canvas_cli:main"
-canvas-mcp = "mcp_server:main"
+canvas-mcp = "mcp_entry:main"
 
 [tool.uv]
 package = true
@@ -32,15 +32,11 @@ dev = [
 testpaths = ["tests"]
 
 [tool.setuptools]
+packages = ["canvas_mcp", "auth", "cli", "specs", "tools", "client"]
 py-modules = [
-  "canvas_api",
-  "canvas_tools",
-  "canvas_urls",
-  "chrome_cookies",
-  "mcp_server",
   "canvas_cli",
-  "canvas_tool_registry",
+  "mcp_entry",
 ]
 
-[tool.setuptools.packages.find]
-include = ["tools"]
+[tool.setuptools.package-dir]
+canvas_mcp = "mcp"
