@@ -18,6 +18,8 @@ Auth is Chrome-only:
 - If `CANVAS_BASE_URL` is set, that domain is used.
 - If `CANVAS_BASE_URL` is unset, the CLI tries to auto-detect a single Canvas domain from Chrome cookies.
 - Chrome cookies are read fresh on every request, so session and CSRF rotation are picked up automatically.
+- Normal CLI commands run a local precheck only (base URL + cookie presence).
+- `canvas auth-status` runs a live Canvas probe and returns JSON even on errors.
 
 > **Note:** macOS will prompt for Keychain access on first run. Click "Allow" or "Always Allow".
 
@@ -62,6 +64,16 @@ Check current auth status:
 
 ```bash
 uv run canvas auth-status
+```
+
+Manage Chrome profile selection:
+
+```bash
+uv run canvas settings profiles
+uv run canvas settings choose-profile
+uv run canvas settings choose-profile "terpmail.umd.edu"
+uv run canvas settings show
+uv run canvas settings clear
 ```
 
 ## Install
