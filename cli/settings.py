@@ -6,7 +6,7 @@ import sys
 import typer
 from rich.console import Console
 
-from auth import get_auth_status
+from auth import CanvasAPIError, get_auth_status
 from auth.inspect import describe_chrome_profiles
 from auth.chrome_cookies import resolve_chrome_profile
 from auth.settings import clear_settings, load_settings, set_selected_profile
@@ -21,9 +21,18 @@ def _render_selected_profile(saved: dict[str, str]) -> None:
 
 @settings_app.command("show")
 def settings_show() -> None:
+    try:
+        auth = get_auth_status()
+    except CanvasAPIError as exc:
+        auth = {
+            "auth_mode": None,
+            "auth_verified": False,
+            "auth_status": "error",
+            "error": str(exc),
+        }
     payload = {
         "settings": load_settings(),
-        "auth": get_auth_status(),
+        "auth": auth,
     }
     console.print_json(json.dumps(payload, default=str))
 

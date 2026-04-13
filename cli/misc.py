@@ -6,6 +6,8 @@ from typing import Annotated, Callable
 import typer
 from rich.console import Console
 
+from auth import CanvasAPIError
+
 console = Console()
 tool_app = typer.Typer(help="Low-level tool access.")
 
@@ -18,6 +20,17 @@ def register(
     tool_names: list[str],
     auth_status_provider: Callable[[], dict[str, object]],
 ) -> typer.Typer:
+    def _safe_auth_status() -> dict[str, object]:
+        try:
+            return auth_status_provider()
+        except CanvasAPIError as exc:
+            return {
+                "auth_mode": None,
+                "auth_verified": False,
+                "auth_status": "error",
+                "error": str(exc),
+            }
+
     @app.command()
     def today() -> None:
         invoke("get_today")
@@ -128,7 +141,7 @@ def register(
 
     @app.command("auth-status")
     def auth_status() -> None:
-        console.print_json(json.dumps(auth_status_provider(), default=str))
+        console.print_json(json.dumps(_safe_auth_status(), default=str))
 
     @tool_app.command("list")
     def tool_list() -> None:
