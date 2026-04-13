@@ -272,12 +272,8 @@ class TestAuthPriority:
     def test_chrome_cookies_first(self):
         cookies = ("session", "csrf")
         with (
-            mock.patch("auth.resolve.resolve_canvas_base_url", return_value="https://umd.instructure.com"),
+            mock.patch("auth.resolve_canvas_base_url", return_value="https://umd.instructure.com"),
             mock.patch("auth._read_chrome_cookies", return_value=cookies),
-            mock.patch(
-                "auth.probe.get_auth_status",
-                return_value={"auth_verified": True},
-            ),
         ):
             from auth import ensure_canvas_auth_configured
 
@@ -286,10 +282,8 @@ class TestAuthPriority:
 
     def test_raises_when_no_chrome_cookies(self):
         with (
-            mock.patch(
-                "auth.probe.get_auth_status",
-                return_value={"auth_verified": False, "error": "No usable Canvas session"},
-            ),
+            mock.patch("auth.resolve_canvas_base_url", return_value="https://umd.instructure.com"),
+            mock.patch("auth._read_chrome_cookies", return_value=None),
         ):
             from auth import CanvasAPIError, ensure_canvas_auth_configured
 

@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 import requests
 
 from .chrome_cookies import read_chrome_cookies
-from .errors import CanvasAPIError, missing_chrome_session_error
+from .errors import missing_chrome_session_error
 from .profiles import resolve_chrome_profile_path, resolve_selected_chrome_profile
 from .resolve import resolve_canvas_base_url
 from .session import list_canvas_cookie_domains_for_profile
@@ -116,10 +116,3 @@ def get_auth_status(
         f"{response.status_code} ({content_type or 'unknown content type'})."
     )
     return status
-
-
-def ensure_canvas_auth_configured() -> str:
-    status = get_auth_status()
-    if status["auth_verified"]:
-        return "chrome-session"
-    raise CanvasAPIError(status["error"] or "Canvas auth could not be verified.")
