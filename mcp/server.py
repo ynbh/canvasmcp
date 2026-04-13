@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import argparse
-from fastmcp import FastMCP
 from inspect import Parameter, Signature
 from typing import Any
 
-from canvas_api import ensure_canvas_auth_configured
-from canvas_tool_registry import TOOL_SPECS, ToolSpec, dispatch_tool_call
+from fastmcp import FastMCP
+
+from auth import ensure_canvas_auth_configured
+from specs.registry import TOOL_SPECS, dispatch_tool_call
+from specs.schema import ToolSpec
 
 mcp = FastMCP("canvas-mcp")
+
 
 def _annotation_from_schema(parameter_schema: dict[str, Any]) -> Any:
     type_name = parameter_schema.get("type")

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from canvas_api import CanvasAPIError
+from auth import CanvasAPIError
 from tools.common import (
     assignment_to_discussion_topic,
     candidate_ids_for_lookup,

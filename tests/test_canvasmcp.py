@@ -5,6 +5,7 @@ Run with: .venv/bin/python -m pytest tests/ -v
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 from unittest import mock
@@ -22,7 +23,7 @@ class TestDomainFromBaseUrl:
     """Tests for _domain_from_base_url."""
 
     def test_extracts_hostname(self):
-        from chrome_cookies import _domain_from_base_url
+        from auth.chrome_cookies import _domain_from_base_url
 
         assert (
             _domain_from_base_url("https://umd.instructure.com")
@@ -30,7 +31,7 @@ class TestDomainFromBaseUrl:
         )
 
     def test_extracts_hostname_with_path(self):
-        from chrome_cookies import _domain_from_base_url
+        from auth.chrome_cookies import _domain_from_base_url
 
         assert (
             _domain_from_base_url("https://canvas.school.edu/api/v1")
@@ -38,7 +39,7 @@ class TestDomainFromBaseUrl:
         )
 
     def test_default_url(self):
-        from chrome_cookies import _domain_from_base_url
+        from auth.chrome_cookies import _domain_from_base_url
 
         assert (
             _domain_from_base_url("https://canvas.instructure.com")
@@ -50,7 +51,7 @@ class TestReadChromeCookies:
     """Tests for the browser_cookie3 adapter."""
 
     def test_reads_matching_domain(self):
-        from chrome_cookies import read_chrome_cookies
+        from auth.chrome_cookies import read_chrome_cookies
 
         def cookie(name: str, value: str, domain: str):
             return type("Cookie", (), {"name": name, "value": value, "domain": domain})()
@@ -59,14 +60,14 @@ class TestReadChromeCookies:
             cookie("canvas_session", "session123", ".umd.instructure.com"),
             cookie("_csrf_token", "csrf456", ".umd.instructure.com"),
         ]
-        with mock.patch("chrome_cookies.browser_cookie3.chrome", return_value=cookies):
+        with mock.patch("auth.chrome_cookies.browser_cookie3.chrome", return_value=cookies):
             assert read_chrome_cookies("https://umd.instructure.com") == (
                 "session123",
                 "csrf456",
             )
 
     def test_reads_parent_domain_for_specific_canvas_host(self):
-        from chrome_cookies import read_chrome_cookies
+        from auth.chrome_cookies import read_chrome_cookies
 
         def cookie(name: str, value: str, domain: str):
             return type("Cookie", (), {"name": name, "value": value, "domain": domain})()
@@ -75,14 +76,14 @@ class TestReadChromeCookies:
             cookie("canvas_session", "session123", ".instructure.com"),
             cookie("_csrf_token", "csrf456", ".instructure.com"),
         ]
-        with mock.patch("chrome_cookies.browser_cookie3.chrome", return_value=cookies):
+        with mock.patch("auth.chrome_cookies.browser_cookie3.chrome", return_value=cookies):
             assert read_chrome_cookies("https://umd.instructure.com") == (
                 "session123",
                 "csrf456",
             )
 
     def test_detect_canvas_base_url_requires_unique_match(self):
-        from chrome_cookies import detect_canvas_base_url
+        from auth.chrome_cookies import detect_canvas_base_url
 
         def cookie(name: str, value: str, domain: str):
             return type("Cookie", (), {"name": name, "value": value, "domain": domain})()
@@ -91,11 +92,11 @@ class TestReadChromeCookies:
             cookie("canvas_session", "session123", ".umd.instructure.com"),
             cookie("_csrf_token", "csrf456", ".umd.instructure.com"),
         ]
-        with mock.patch("chrome_cookies.browser_cookie3.chrome", return_value=cookies):
+        with mock.patch("auth.chrome_cookies.browser_cookie3.chrome", return_value=cookies):
             assert detect_canvas_base_url() == "https://umd.instructure.com"
 
     def test_detect_canvas_base_url_returns_none_for_multiple_domains(self):
-        from chrome_cookies import detect_canvas_base_url
+        from auth.chrome_cookies import detect_canvas_base_url
 
         def cookie(name: str, value: str, domain: str):
             return type("Cookie", (), {"name": name, "value": value, "domain": domain})()
@@ -106,11 +107,11 @@ class TestReadChromeCookies:
             cookie("canvas_session", "c", ".school.instructure.com"),
             cookie("_csrf_token", "d", ".school.instructure.com"),
         ]
-        with mock.patch("chrome_cookies.browser_cookie3.chrome", return_value=cookies):
+        with mock.patch("auth.chrome_cookies.browser_cookie3.chrome", return_value=cookies):
             assert detect_canvas_base_url() is None
 
     def test_detect_canvas_base_url_prefers_specific_domain_over_parent_domain(self):
-        from chrome_cookies import detect_canvas_base_url
+        from auth.chrome_cookies import detect_canvas_base_url
 
         def cookie(name: str, value: str, domain: str):
             return type("Cookie", (), {"name": name, "value": value, "domain": domain})()
@@ -121,11 +122,11 @@ class TestReadChromeCookies:
             cookie("canvas_session", "child-session", ".umd.instructure.com"),
             cookie("_csrf_token", "child-csrf", ".umd.instructure.com"),
         ]
-        with mock.patch("chrome_cookies.browser_cookie3.chrome", return_value=cookies):
+        with mock.patch("auth.chrome_cookies.browser_cookie3.chrome", return_value=cookies):
             assert detect_canvas_base_url() == "https://umd.instructure.com"
 
     def test_detect_canvas_base_url_ignores_canvas_user_content_domains(self):
-        from chrome_cookies import detect_canvas_base_url
+        from auth.chrome_cookies import detect_canvas_base_url
 
         def cookie(name: str, value: str, domain: str):
             return type("Cookie", (), {"name": name, "value": value, "domain": domain})()
@@ -136,12 +137,60 @@ class TestReadChromeCookies:
             cookie("canvas_session", "school-session", ".umd.instructure.com"),
             cookie("_csrf_token", "school-csrf", ".umd.instructure.com"),
         ]
-        with mock.patch("chrome_cookies.browser_cookie3.chrome", return_value=cookies):
+        with mock.patch("auth.chrome_cookies.browser_cookie3.chrome", return_value=cookies):
             assert detect_canvas_base_url() == "https://umd.instructure.com"
+
+    def test_reads_matching_domain_for_specific_profile_path(self):
+        from auth.chrome_cookies import read_chrome_cookies
+
+        def cookie(name: str, value: str, domain: str):
+            return type("Cookie", (), {"name": name, "value": value, "domain": domain})()
+
+        cookies = [
+            cookie("canvas_session", "session123", ".umd.instructure.com"),
+            cookie("_csrf_token", "csrf456", ".umd.instructure.com"),
+        ]
+        with (
+            mock.patch("auth.chrome_cookies._cookie_file_for_profile", return_value="/tmp/Cookies"),
+            mock.patch("auth.chrome_cookies.browser_cookie3.chrome", return_value=cookies) as chrome,
+        ):
+            assert read_chrome_cookies(
+                "https://umd.instructure.com",
+                profile_path="/tmp/Profile 3",
+            ) == ("session123", "csrf456")
+        assert chrome.call_args.kwargs["cookie_file"].endswith("Cookies")
+
+
+class TestChromeProfiles:
+    def test_list_chrome_profiles_uses_local_state_names(self, tmp_path: Path):
+        from auth.chrome_cookies import list_chrome_profiles
+
+        user_data = tmp_path / "Chrome"
+        default = user_data / "Default"
+        profile_3 = user_data / "Profile 3"
+        (default / "Network").mkdir(parents=True)
+        (profile_3 / "Network").mkdir(parents=True)
+        (default / "Network" / "Cookies").write_text("")
+        (profile_3 / "Network" / "Cookies").write_text("")
+        (user_data / "Local State").write_text(
+            json.dumps(
+                {
+                    "profile": {
+                        "info_cache": {
+                            "Default": {"name": "terpmail.umd.edu"},
+                            "Profile 3": {"name": "Yashas"},
+                        }
+                    }
+                }
+            )
+        )
+
+        profiles = list_chrome_profiles(str(user_data))
+        assert [profile.name for profile in profiles] == ["terpmail.umd.edu", "Yashas"]
 
 
 # ---------------------------------------------------------------------------
-# canvas_urls tests
+# auth.urls tests
 # ---------------------------------------------------------------------------
 
 
@@ -149,40 +198,40 @@ class TestNormalizeCanvasApiBaseUrl:
     """Tests for normalize_canvas_api_base_url."""
 
     def test_adds_api_v1(self):
-        from canvas_urls import normalize_canvas_api_base_url
+        from auth.urls import normalize_canvas_api_base_url
 
         assert normalize_canvas_api_base_url("https://canvas.instructure.com") == (
             "https://canvas.instructure.com/api/v1"
         )
 
     def test_preserves_existing_api_v1(self):
-        from canvas_urls import normalize_canvas_api_base_url
+        from auth.urls import normalize_canvas_api_base_url
 
         assert normalize_canvas_api_base_url(
             "https://canvas.instructure.com/api/v1"
         ) == ("https://canvas.instructure.com/api/v1")
 
     def test_extends_api_to_v1(self):
-        from canvas_urls import normalize_canvas_api_base_url
+        from auth.urls import normalize_canvas_api_base_url
 
         assert normalize_canvas_api_base_url("https://canvas.instructure.com/api") == (
             "https://canvas.instructure.com/api/v1"
         )
 
     def test_strips_trailing_slashes(self):
-        from canvas_urls import normalize_canvas_api_base_url
+        from auth.urls import normalize_canvas_api_base_url
 
         result = normalize_canvas_api_base_url("https://canvas.instructure.com///")
         assert result == "https://canvas.instructure.com/api/v1"
 
     def test_raises_on_empty(self):
-        from canvas_urls import normalize_canvas_api_base_url
+        from auth.urls import normalize_canvas_api_base_url
 
         with pytest.raises(ValueError, match="empty"):
             normalize_canvas_api_base_url("   ")
 
     def test_raises_on_no_scheme(self):
-        from canvas_urls import normalize_canvas_api_base_url
+        from auth.urls import normalize_canvas_api_base_url
 
         with pytest.raises(ValueError, match="scheme"):
             normalize_canvas_api_base_url("canvas.instructure.com")
@@ -192,28 +241,28 @@ class TestCanvasRootUrl:
     """Tests for canvas_root_url."""
 
     def test_strips_api_v1(self):
-        from canvas_urls import canvas_root_url
+        from auth.urls import canvas_root_url
 
         assert canvas_root_url("https://canvas.instructure.com/api/v1") == (
             "https://canvas.instructure.com"
         )
 
     def test_strips_api(self):
-        from canvas_urls import canvas_root_url
+        from auth.urls import canvas_root_url
 
         assert canvas_root_url("https://canvas.instructure.com/api") == (
             "https://canvas.instructure.com"
         )
 
     def test_no_api_path(self):
-        from canvas_urls import canvas_root_url
+        from auth.urls import canvas_root_url
 
         result = canvas_root_url("https://canvas.instructure.com")
         assert result == "https://canvas.instructure.com"
 
 
 # ---------------------------------------------------------------------------
-# canvas_api auth tests
+# auth tests
 # ---------------------------------------------------------------------------
 
 
@@ -223,20 +272,26 @@ class TestAuthPriority:
     def test_chrome_cookies_first(self):
         cookies = ("session", "csrf")
         with (
-            mock.patch("canvas_api._resolve_canvas_base_url", return_value="https://umd.instructure.com"),
-            mock.patch("canvas_api._read_chrome_cookies", return_value=cookies),
+            mock.patch("auth.resolve.resolve_canvas_base_url", return_value="https://umd.instructure.com"),
+            mock.patch("auth._read_chrome_cookies", return_value=cookies),
+            mock.patch(
+                "auth.probe.get_auth_status",
+                return_value={"auth_verified": True},
+            ),
         ):
-            from canvas_api import ensure_canvas_auth_configured
+            from auth import ensure_canvas_auth_configured
 
             result = ensure_canvas_auth_configured()
             assert result == "chrome-session"
 
     def test_raises_when_no_chrome_cookies(self):
         with (
-            mock.patch("canvas_api._resolve_canvas_base_url", return_value="https://umd.instructure.com"),
-            mock.patch("canvas_api._read_chrome_cookies", return_value=None),
+            mock.patch(
+                "auth.probe.get_auth_status",
+                return_value={"auth_verified": False, "error": "No usable Canvas session"},
+            ),
         ):
-            from canvas_api import CanvasAPIError, ensure_canvas_auth_configured
+            from auth import CanvasAPIError, ensure_canvas_auth_configured
 
             with pytest.raises(CanvasAPIError):
                 ensure_canvas_auth_configured()
@@ -247,35 +302,36 @@ class TestAuthPriority:
             {"CANVAS_BASE_URL": "https://umd.instructure.com"},
             clear=True,
         ):
-            from canvas_api import _resolve_canvas_base_url
+            from auth.resolve import resolve_canvas_base_url
 
-            assert _resolve_canvas_base_url() == "https://umd.instructure.com"
+            assert resolve_canvas_base_url() == "https://umd.instructure.com"
 
     def test_uses_detected_base_url_when_env_unset(self):
         with (
             mock.patch.dict(os.environ, {}, clear=True),
             mock.patch(
-                "chrome_cookies.detect_canvas_base_url",
+                "auth.chrome_cookies.detect_canvas_base_url",
                 return_value="https://umd.instructure.com",
             ),
         ):
-            from canvas_api import _resolve_canvas_base_url
+            from auth.resolve import resolve_canvas_base_url
 
-            assert _resolve_canvas_base_url() == "https://umd.instructure.com"
+            assert resolve_canvas_base_url() == "https://umd.instructure.com"
 
     def test_inference_error_mentions_chrome_before_env_override(self):
         with (
             mock.patch.dict(os.environ, {}, clear=True),
-            mock.patch("chrome_cookies.detect_canvas_base_url", return_value=None),
+            mock.patch("auth.resolve.detect_canvas_base_url", return_value=None),
             mock.patch(
-                "chrome_cookies.list_canvas_cookie_domains",
+                "auth.errors.list_canvas_cookie_domains",
                 return_value=["umd.instructure.com", "school.instructure.com"],
             ),
         ):
-            from canvas_api import CanvasAPIError, _resolve_canvas_base_url
+            from auth.errors import CanvasAPIError
+            from auth.resolve import resolve_canvas_base_url
 
             with pytest.raises(CanvasAPIError) as excinfo:
-                _resolve_canvas_base_url()
+                resolve_canvas_base_url()
 
         message = str(excinfo.value)
         assert "Found multiple Canvas sites in Chrome" in message
@@ -289,10 +345,10 @@ class TestCreateCanvasClientFromEnv:
     def test_chrome_cookies_sets_cookie_provider(self):
         cookies = ("session_val", "csrf_val")
         with (
-            mock.patch("canvas_api._resolve_canvas_base_url", return_value="https://umd.instructure.com"),
-            mock.patch("canvas_api._read_chrome_cookies", return_value=cookies),
+            mock.patch("auth.resolve.resolve_canvas_base_url", return_value="https://umd.instructure.com"),
+            mock.patch("client._read_chrome_cookies", return_value=cookies),
         ):
-            from canvas_api import create_canvas_client_from_env
+            from client import create_canvas_client_from_env
 
             client = create_canvas_client_from_env()
             assert client.cookie_provider is not None
@@ -301,10 +357,11 @@ class TestCreateCanvasClientFromEnv:
 
     def test_raises_without_chrome_cookies(self):
         with (
-            mock.patch("canvas_api._resolve_canvas_base_url", return_value="https://umd.instructure.com"),
-            mock.patch("canvas_api._read_chrome_cookies", return_value=None),
+            mock.patch("auth.resolve.resolve_canvas_base_url", return_value="https://umd.instructure.com"),
+            mock.patch("client._read_chrome_cookies", return_value=None),
         ):
-            from canvas_api import CanvasAPIError, create_canvas_client_from_env
+            from auth import CanvasAPIError
+            from client import create_canvas_client_from_env
 
             with pytest.raises(CanvasAPIError):
                 create_canvas_client_from_env()
@@ -314,30 +371,31 @@ class TestGeneratedCli:
     """Smoke tests for the direct Typer CLI."""
 
     def test_tool_list_outputs_known_tool(self):
-        import canvas_cli
+        import cli
 
         runner = CliRunner()
-        result = runner.invoke(canvas_cli.app, ["tool", "list"])
+        result = runner.invoke(cli.app, ["tool", "list"])
         assert result.exit_code == 0
         assert "list_courses" in result.stdout
 
     def test_main_invokes_app(self):
-        import canvas_cli
+        import cli.bootstrap as cli_boot
 
-        with mock.patch.object(canvas_cli, "app") as app:
-            canvas_cli.main()
+        with mock.patch.object(cli_boot, "app") as app:
+            cli_boot.main()
             app.assert_called_once_with()
 
     def test_courses_command_dispatches_expected_args(self):
-        import canvas_cli
+        import cli
+        import cli.bootstrap as cli_boot
 
         runner = CliRunner()
         with (
-            mock.patch.object(canvas_cli, "_ensure_auth"),
-            mock.patch.object(canvas_cli, "dispatch_tool_call") as dispatch,
+            mock.patch.object(cli_boot, "_ensure_auth"),
+            mock.patch.object(cli_boot, "dispatch_tool_call") as dispatch,
         ):
             dispatch.return_value = {"count": 0, "courses": []}
-            result = runner.invoke(canvas_cli.app, ["courses", "--all", "--limit", "10"])
+            result = runner.invoke(cli.app, ["courses", "--all", "--limit", "10"])
         assert result.exit_code == 0
         dispatch.assert_called_once_with(
             "list_courses",
@@ -345,67 +403,135 @@ class TestGeneratedCli:
         )
 
     def test_today_does_not_require_auth(self):
-        import canvas_cli
+        import cli
+        import cli.bootstrap as cli_boot
 
         runner = CliRunner()
         with (
-            mock.patch.object(canvas_cli, "_ensure_auth") as ensure_auth,
-            mock.patch.object(canvas_cli, "dispatch_tool_call") as dispatch,
+            mock.patch.object(cli_boot, "_ensure_auth") as ensure_auth,
+            mock.patch.object(cli_boot, "dispatch_tool_call") as dispatch,
         ):
             dispatch.return_value = {"today": "2026-03-10"}
-            result = runner.invoke(canvas_cli.app, ["today"])
+            result = runner.invoke(cli.app, ["today"])
         assert result.exit_code == 0
         ensure_auth.assert_not_called()
 
     def test_auth_status_reports_env_override(self):
-        import canvas_cli
+        import cli
+        import cli.bootstrap as cli_boot
 
         runner = CliRunner()
-        with (
-            mock.patch.dict(os.environ, {"CANVAS_BASE_URL": "https://umd.instructure.com"}),
-            mock.patch.object(canvas_cli, "ensure_canvas_auth_configured", return_value="chrome-session"),
-            mock.patch(
-                "chrome_cookies.list_canvas_cookie_domains",
-                return_value=["umd.instructure.com"],
-            ),
+        with mock.patch.object(
+            cli_boot,
+            "get_auth_status",
+            return_value={
+                "auth_mode": "chrome-session",
+                "resolved_canvas_base_url": "https://umd.instructure.com",
+                "auth_status": "verified",
+            },
         ):
-            result = runner.invoke(canvas_cli.app, ["auth-status"])
-            assert result.exit_code == 0
-            assert "chrome-session" in result.stdout
-            assert "umd.instructure.com" in result.stdout
+            result = runner.invoke(cli.app, ["auth-status"])
+        assert result.exit_code == 0
+        assert "chrome-session" in result.stdout
+        assert "umd.instructure.com" in result.stdout
 
     def test_auth_status_returns_json_error_instead_of_exiting(self):
-        import canvas_cli
-        from canvas_api import CanvasAPIError
+        import cli
+        import cli.bootstrap as cli_boot
 
         runner = CliRunner()
-        with (
-            mock.patch.object(
-                canvas_cli,
-                "ensure_canvas_auth_configured",
-                side_effect=CanvasAPIError("No usable Canvas session"),
-            ),
-            mock.patch(
-                "chrome_cookies.list_canvas_cookie_domains",
-                return_value=["umd.instructure.com"],
-            ),
+        with mock.patch.object(
+            cli_boot,
+            "get_auth_status",
+            return_value={
+                "auth_mode": None,
+                "auth_status": "not_logged_in",
+                "error": "No usable Canvas session",
+            },
         ):
-            result = runner.invoke(canvas_cli.app, ["auth-status"])
+            result = runner.invoke(cli.app, ["auth-status"])
         assert result.exit_code == 0
         assert '"auth_mode": null' in result.stdout
         assert "No usable Canvas session" in result.stdout
 
+    def test_settings_show_reports_saved_profile_and_auth(self):
+        import cli
+        import cli.settings as settings_mod
+
+        runner = CliRunner()
+        with (
+            mock.patch(
+                "auth.settings.load_settings",
+                return_value={"chrome_profile_name": "terpmail.umd.edu"},
+            ),
+            mock.patch.object(
+                settings_mod,
+                "get_auth_status",
+                return_value={"auth_status": "verified"},
+            ),
+        ):
+            result = runner.invoke(cli.app, ["settings", "show"])
+        assert result.exit_code == 0
+        assert "terpmail.umd.edu" in result.stdout
+        assert "verified" in result.stdout
+
+    def test_settings_profiles_outputs_profile_statuses(self):
+        import cli
+
+        runner = CliRunner()
+        with mock.patch(
+            "cli.settings.describe_chrome_profiles",
+            return_value=[
+                {"name": "terpmail.umd.edu", "auth_status": "verified"},
+                {"name": "Yashas", "auth_status": "not_logged_in"},
+            ],
+        ):
+            result = runner.invoke(cli.app, ["settings", "profiles"])
+        assert result.exit_code == 0
+        assert "verified" in result.stdout
+        assert "not_logged_in" in result.stdout
+
+    def test_settings_choose_profile_headless_accepts_explicit_name(self):
+        import cli
+
+        runner = CliRunner()
+        resolved = type(
+            "ResolvedProfile",
+            (),
+            {"name": "terpmail.umd.edu", "path": "/tmp/Default"},
+        )()
+        with (
+            mock.patch(
+                "cli.settings.resolve_chrome_profile",
+                return_value=resolved,
+            ),
+            mock.patch(
+                "cli.settings.set_selected_profile",
+                return_value={
+                    "chrome_profile_name": "terpmail.umd.edu",
+                    "chrome_profile_path": "/tmp/Default",
+                },
+            ) as save,
+        ):
+            result = runner.invoke(
+                cli.app,
+                ["settings", "choose-profile", "terpmail.umd.edu"],
+            )
+        assert result.exit_code == 0
+        save.assert_called_once_with(name="terpmail.umd.edu", path="/tmp/Default")
+
     def test_courses_command_renders_clean_auth_error(self):
-        import canvas_cli
-        from canvas_api import CanvasAPIError
+        import cli
+        import cli.bootstrap as cli_boot
+        from auth import CanvasAPIError
 
         runner = CliRunner()
         with mock.patch.object(
-            canvas_cli,
+            cli_boot,
             "ensure_canvas_auth_configured",
             side_effect=CanvasAPIError("Open Canvas in Chrome and retry"),
         ):
-            result = runner.invoke(canvas_cli.app, ["courses"])
+            result = runner.invoke(cli.app, ["courses"])
         assert result.exit_code == 1
         assert "Error: Open Canvas in Chrome and retry" in result.stdout
         assert "Traceback" not in result.stdout
@@ -415,24 +541,26 @@ class TestMcpServerEntrypoint:
     """Tests for the FastMCP server entrypoint."""
 
     def test_main_defaults_to_stdio(self):
-        import mcp_server
+        import canvas_mcp
+        import canvas_mcp.server as mcp_srv
 
         with (
-            mock.patch.object(mcp_server, "ensure_canvas_auth_configured"),
-            mock.patch.object(mcp_server.mcp, "run") as run,
+            mock.patch.object(mcp_srv, "ensure_canvas_auth_configured"),
+            mock.patch.object(canvas_mcp.mcp, "run") as run,
         ):
-            mcp_server.main([])
+            canvas_mcp.main([])
 
         run.assert_called_once_with("stdio", show_banner=True)
 
     def test_main_supports_http_transport(self):
-        import mcp_server
+        import canvas_mcp
+        import canvas_mcp.server as mcp_srv
 
         with (
-            mock.patch.object(mcp_server, "ensure_canvas_auth_configured"),
-            mock.patch.object(mcp_server.mcp, "run") as run,
+            mock.patch.object(mcp_srv, "ensure_canvas_auth_configured"),
+            mock.patch.object(canvas_mcp.mcp, "run") as run,
         ):
-            mcp_server.main(
+            canvas_mcp.main(
                 [
                     "--transport",
                     "http",
@@ -456,7 +584,7 @@ class TestMcpServerEntrypoint:
 
 
 # ---------------------------------------------------------------------------
-# canvas_tools utility function tests
+# tools.canvas_tools utility function tests
 # ---------------------------------------------------------------------------
 
 
@@ -464,18 +592,18 @@ class TestNormalize:
     """Tests for _normalize."""
 
     def test_lowercases_and_cleans(self):
-        from canvas_tools import _normalize
+        from tools.canvas_tools import _normalize
 
         assert _normalize("Hello, World!") == "hello world"
 
     def test_empty_input(self):
-        from canvas_tools import _normalize
+        from tools.canvas_tools import _normalize
 
         assert _normalize("") == ""
         assert _normalize(None) == ""
 
     def test_collapses_whitespace(self):
-        from canvas_tools import _normalize
+        from tools.canvas_tools import _normalize
 
         assert _normalize("  lots   of   spaces  ") == "lots of spaces"
 
@@ -484,19 +612,19 @@ class TestClamp:
     """Tests for _clamp."""
 
     def test_clamps_to_range(self):
-        from canvas_tools import _clamp
+        from tools.canvas_tools import _clamp
 
         assert _clamp(0, 50) == 1
         assert _clamp(500, 50) == 300
         assert _clamp(100, 50) == 100
 
     def test_returns_default_for_none(self):
-        from canvas_tools import _clamp
+        from tools.canvas_tools import _clamp
 
         assert _clamp(None, 50) == 50
 
     def test_returns_default_for_invalid(self):
-        from canvas_tools import _clamp
+        from tools.canvas_tools import _clamp
 
         assert _clamp("abc", 50) == 50
 
@@ -505,13 +633,13 @@ class TestRelevanceScore:
     """Tests for _relevance_score."""
 
     def test_exact_name_match(self):
-        from canvas_tools import _relevance_score
+        from tools.canvas_tools import _relevance_score
 
         score = _relevance_score("CMSC430", {"name": "CMSC430", "course_code": ""})
         assert score == 1.0
 
     def test_partial_match(self):
-        from canvas_tools import _relevance_score
+        from tools.canvas_tools import _relevance_score
 
         score = _relevance_score(
             "cmsc", {"name": "CMSC430 Spring 2026", "course_code": ""}
@@ -519,13 +647,13 @@ class TestRelevanceScore:
         assert 0 < score < 1.0
 
     def test_no_match(self):
-        from canvas_tools import _relevance_score
+        from tools.canvas_tools import _relevance_score
 
         score = _relevance_score("xyz", {"name": "CMSC430", "course_code": "CS430"})
         assert score == 0.0
 
     def test_empty_query(self):
-        from canvas_tools import _relevance_score
+        from tools.canvas_tools import _relevance_score
 
         assert _relevance_score("", {"name": "anything"}) == 0.0
 
@@ -534,27 +662,27 @@ class TestCanvasIdHelpers:
     """Tests for ID expansion/collapse/alias functions."""
 
     def test_expand_tilde_id(self):
-        from canvas_tools import _expand_canvas_id
+        from tools.canvas_tools import _expand_canvas_id
 
         result = _expand_canvas_id("1133~12345")
         # Tilde-form expands to prefix + 000000 + suffix
         assert result == "113300000012345"
 
     def test_collapse_full_id(self):
-        from canvas_tools import _collapse_canvas_id
+        from tools.canvas_tools import _collapse_canvas_id
 
         result = _collapse_canvas_id("113300000012345")
         assert result == "1133~12345"
 
     def test_short_canvas_id(self):
-        from canvas_tools import _short_canvas_id
+        from tools.canvas_tools import _short_canvas_id
 
         assert _short_canvas_id("113300000012345") == "12345"
         assert _short_canvas_id("1133~12345") == "12345"
         assert _short_canvas_id("12345") == "12345"
 
     def test_id_aliases_returns_all_forms(self):
-        from canvas_tools import _id_aliases
+        from tools.canvas_tools import _id_aliases
 
         aliases = _id_aliases("1133~12345")
         assert "1133~12345" in aliases
@@ -562,12 +690,12 @@ class TestCanvasIdHelpers:
         assert "12345" in aliases
 
     def test_id_aliases_empty_input(self):
-        from canvas_tools import _id_aliases
+        from tools.canvas_tools import _id_aliases
 
         assert _id_aliases("") == []
 
     def test_candidate_ids_for_lookup(self):
-        from canvas_tools import _candidate_ids_for_lookup
+        from tools.canvas_tools import _candidate_ids_for_lookup
 
         candidates = _candidate_ids_for_lookup("1133~5", course_id="1133000000099")
         assert len(candidates) > 0
@@ -579,7 +707,7 @@ class TestMapDiscussionEntry:
     """Tests for _map_discussion_entry."""
 
     def test_maps_basic_entry(self):
-        from canvas_tools import _map_discussion_entry
+        from tools.canvas_tools import _map_discussion_entry
 
         entry = {
             "id": 123,
@@ -593,7 +721,7 @@ class TestMapDiscussionEntry:
         assert "replies" not in result
 
     def test_maps_with_replies(self):
-        from canvas_tools import _map_discussion_entry
+        from tools.canvas_tools import _map_discussion_entry
 
         entry = {
             "id": 1,
@@ -609,13 +737,13 @@ class TestCountDiscussionEntries:
     """Tests for _count_discussion_entries."""
 
     def test_counts_flat(self):
-        from canvas_tools import _count_discussion_entries
+        from tools.canvas_tools import _count_discussion_entries
 
         entries = [{"id": 1}, {"id": 2}, {"id": 3}]
         assert _count_discussion_entries(entries) == 3
 
     def test_counts_nested(self):
-        from canvas_tools import _count_discussion_entries
+        from tools.canvas_tools import _count_discussion_entries
 
         entries = [
             {"id": 1, "replies": [{"id": 2}, {"id": 3, "replies": [{"id": 4}]}]},
@@ -627,53 +755,53 @@ class TestHelperFunctions:
     """Tests for various small helper functions."""
 
     def test_is_forbidden_message(self):
-        from canvas_tools import _is_forbidden_message
+        from tools.canvas_tools import _is_forbidden_message
 
         assert _is_forbidden_message("403 Forbidden") is True
         assert _is_forbidden_message("not authorized") is True
         assert _is_forbidden_message("success") is False
 
     def test_is_not_found_message(self):
-        from canvas_tools import _is_not_found_message
+        from tools.canvas_tools import _is_not_found_message
 
         assert _is_not_found_message("Not Found") is True
         assert _is_not_found_message("could not find resource") is True
         assert _is_not_found_message("success") is False
 
     def test_first_non_none(self):
-        from canvas_tools import _first_non_none
+        from tools.canvas_tools import _first_non_none
 
         assert _first_non_none(None, None, "hello") == "hello"
         assert _first_non_none("first", "second") == "first"
         assert _first_non_none(None, None) is None
 
     def test_extract_discussion_topic_id_direct(self):
-        from canvas_tools import _extract_discussion_topic_id
+        from tools.canvas_tools import _extract_discussion_topic_id
 
         assert _extract_discussion_topic_id({"discussion_topic_id": 42}) == "42"
 
     def test_extract_discussion_topic_id_nested(self):
-        from canvas_tools import _extract_discussion_topic_id
+        from tools.canvas_tools import _extract_discussion_topic_id
 
         item = {"discussion_topic": {"id": 99}}
         assert _extract_discussion_topic_id(item) == "99"
 
     def test_extract_discussion_topic_id_none(self):
-        from canvas_tools import _extract_discussion_topic_id
+        from tools.canvas_tools import _extract_discussion_topic_id
 
         assert _extract_discussion_topic_id({}) is None
 
 
 # ---------------------------------------------------------------------------
-# canvas_tools tool handler tests (with mocked Canvas client)
+# tools.canvas_tools tool handler tests (with mocked Canvas client)
 # ---------------------------------------------------------------------------
 
 
 @pytest.fixture
-def mock_canvas_client():
+def mock_client():
     """Mock the _canvas_client() cached singleton."""
     client = mock.MagicMock()
-    with mock.patch("canvas_tools._canvas_client", return_value=client):
+    with mock.patch("tools.canvas_tools._canvas_client", return_value=client):
         yield client
 
 
@@ -681,7 +809,7 @@ class TestGetToday:
     """Tests for get_today tool handler."""
 
     def test_returns_iso_date(self):
-        from canvas_tools import get_today
+        from tools.canvas_tools import get_today
 
         result = get_today({})
         assert "today" in result
@@ -692,8 +820,8 @@ class TestGetToday:
 class TestListCoursesTool:
     """Tests for list_courses tool handler."""
 
-    def test_returns_mapped_courses(self, mock_canvas_client):
-        mock_canvas_client.list_courses.return_value = [
+    def test_returns_mapped_courses(self, mock_client):
+        mock_client.list_courses.return_value = [
             {
                 "id": 123,
                 "name": "Math 101",
@@ -701,15 +829,15 @@ class TestListCoursesTool:
                 "workflow_state": "active",
             },
         ]
-        from canvas_tools import list_courses
+        from tools.canvas_tools import list_courses
 
         result = list_courses({"favorites_only": True, "limit": 10})
         assert result["count"] == 1
         assert result["courses"][0]["name"] == "Math 101"
 
-    def test_empty_courses(self, mock_canvas_client):
-        mock_canvas_client.list_courses.return_value = []
-        from canvas_tools import list_courses
+    def test_empty_courses(self, mock_client):
+        mock_client.list_courses.return_value = []
+        from tools.canvas_tools import list_courses
 
         result = list_courses({})
         assert result["count"] == 0
@@ -718,14 +846,14 @@ class TestListCoursesTool:
 class TestResolveCourseTool:
     """Tests for resolve_course tool handler."""
 
-    def test_empty_query_returns_no_matches(self, mock_canvas_client):
-        from canvas_tools import resolve_course
+    def test_empty_query_returns_no_matches(self, mock_client):
+        from tools.canvas_tools import resolve_course
 
         result = resolve_course({"query": ""})
         assert result["count"] == 0
 
-    def test_scores_and_sorts(self, mock_canvas_client):
-        mock_canvas_client.list_courses.return_value = [
+    def test_scores_and_sorts(self, mock_client):
+        mock_client.list_courses.return_value = [
             {
                 "id": 1,
                 "name": "CMSC430",
@@ -739,7 +867,7 @@ class TestResolveCourseTool:
                 "workflow_state": "active",
             },
         ]
-        from canvas_tools import resolve_course
+        from tools.canvas_tools import resolve_course
 
         result = resolve_course({"query": "CMSC430"})
         assert result["count"] >= 1
@@ -749,14 +877,14 @@ class TestResolveCourseTool:
 class TestListCourseAssignmentsTool:
     """Tests for list_course_assignments tool handler."""
 
-    def test_requires_course_id(self, mock_canvas_client):
-        from canvas_tools import list_course_assignments
+    def test_requires_course_id(self, mock_client):
+        from tools.canvas_tools import list_course_assignments
 
         result = list_course_assignments({})
         assert "error" in result
 
-    def test_returns_assignments(self, mock_canvas_client):
-        mock_canvas_client.list_assignments.return_value = [
+    def test_returns_assignments(self, mock_client):
+        mock_client.list_assignments.return_value = [
             {
                 "id": 42,
                 "name": "HW1",
@@ -764,7 +892,7 @@ class TestListCourseAssignmentsTool:
                 "submission_types": ["online_upload"],
             },
         ]
-        from canvas_tools import list_course_assignments
+        from tools.canvas_tools import list_course_assignments
 
         result = list_course_assignments({"course_id": "123"})
         assert result["count"] == 1
@@ -774,20 +902,20 @@ class TestListCourseAssignmentsTool:
 class TestGetAssignmentDetailsTool:
     """Tests for get_assignment_details tool handler."""
 
-    def test_requires_both_ids(self, mock_canvas_client):
-        from canvas_tools import get_assignment_details
+    def test_requires_both_ids(self, mock_client):
+        from tools.canvas_tools import get_assignment_details
 
         assert "error" in get_assignment_details({"course_id": "1"})
         assert "error" in get_assignment_details({"assignment_id": "1"})
 
-    def test_returns_details(self, mock_canvas_client):
-        mock_canvas_client.get_assignment.return_value = {
+    def test_returns_details(self, mock_client):
+        mock_client.get_assignment.return_value = {
             "id": 42,
             "name": "Midterm",
             "description": "<p>Exam</p>",
             "points_possible": 100,
         }
-        from canvas_tools import get_assignment_details
+        from tools.canvas_tools import get_assignment_details
 
         result = get_assignment_details({"course_id": "1", "assignment_id": "42"})
         assert result["assignment"]["name"] == "Midterm"
@@ -796,13 +924,13 @@ class TestGetAssignmentDetailsTool:
 class TestListCourseFilesTool:
     """Tests for list_course_files tool handler."""
 
-    def test_requires_course_id(self, mock_canvas_client):
-        from canvas_tools import list_course_files
+    def test_requires_course_id(self, mock_client):
+        from tools.canvas_tools import list_course_files
 
         assert "error" in list_course_files({})
 
-    def test_returns_files(self, mock_canvas_client):
-        mock_canvas_client.list_files.return_value = [
+    def test_returns_files(self, mock_client):
+        mock_client.list_files.return_value = [
             {
                 "id": 1,
                 "display_name": "notes.pdf",
@@ -810,7 +938,7 @@ class TestListCourseFilesTool:
                 "size": 1024,
             },
         ]
-        from canvas_tools import list_course_files
+        from tools.canvas_tools import list_course_files
 
         result = list_course_files({"course_id": "123"})
         assert result["count"] == 1
@@ -820,16 +948,16 @@ class TestListCourseFilesTool:
 class TestListCoursePagesTool:
     """Tests for list_course_pages tool handler."""
 
-    def test_requires_course_id(self, mock_canvas_client):
-        from canvas_tools import list_course_pages
+    def test_requires_course_id(self, mock_client):
+        from tools.canvas_tools import list_course_pages
 
         assert "error" in list_course_pages({})
 
-    def test_returns_pages(self, mock_canvas_client):
-        mock_canvas_client.list_pages.return_value = [
+    def test_returns_pages(self, mock_client):
+        mock_client.list_pages.return_value = [
             {"page_id": 1, "url": "home", "title": "Home Page", "published": True},
         ]
-        from canvas_tools import list_course_pages
+        from tools.canvas_tools import list_course_pages
 
         result = list_course_pages({"course_id": "123"})
         assert result["count"] == 1
@@ -839,13 +967,13 @@ class TestListCoursePagesTool:
 class TestListCourseTabsTool:
     """Tests for list_course_tabs tool handler."""
 
-    def test_requires_course_id(self, mock_canvas_client):
-        from canvas_tools import list_course_tabs
+    def test_requires_course_id(self, mock_client):
+        from tools.canvas_tools import list_course_tabs
 
         assert "error" in list_course_tabs({})
 
-    def test_returns_tabs(self, mock_canvas_client):
-        mock_canvas_client.list_tabs.return_value = [
+    def test_returns_tabs(self, mock_client):
+        mock_client.list_tabs.return_value = [
             {
                 "id": "home",
                 "label": "Home",
@@ -857,7 +985,7 @@ class TestListCourseTabsTool:
                 "html_url": "https://umd.instructure.com/courses/123/assignments/syllabus",
             },
         ]
-        from canvas_tools import list_course_tabs
+        from tools.canvas_tools import list_course_tabs
 
         result = list_course_tabs({"course_id": "123"})
         assert result["count"] == 2
@@ -868,19 +996,19 @@ class TestListCourseTabsTool:
 class TestGetCourseTabTool:
     """Tests for get_course_tab tool handler."""
 
-    def test_requires_both_params(self, mock_canvas_client):
-        from canvas_tools import get_course_tab
+    def test_requires_both_params(self, mock_client):
+        from tools.canvas_tools import get_course_tab
 
         assert "error" in get_course_tab({"course_id": "1"})
         assert "error" in get_course_tab({"tab_id": "home"})
 
-    def test_returns_tab_with_target(self, mock_canvas_client):
-        mock_canvas_client.get_tab.return_value = {
+    def test_returns_tab_with_target(self, mock_client):
+        mock_client.get_tab.return_value = {
             "id": "syllabus",
             "label": "Syllabus",
             "html_url": "https://umd.instructure.com/courses/123/assignments/syllabus",
         }
-        mock_canvas_client.get_course.return_value = {
+        mock_client.get_course.return_value = {
             "id": 123,
             "name": "Course",
             "course_code": "C",
@@ -889,7 +1017,7 @@ class TestGetCourseTabTool:
             "syllabus_body": "<p>Hello</p>",
             "html_url": "https://umd.instructure.com/courses/123",
         }
-        from canvas_tools import get_course_tab
+        from tools.canvas_tools import get_course_tab
 
         result = get_course_tab({"course_id": "123", "tab_id": "syllabus"})
         assert result["tab"]["id"] == "syllabus"
@@ -899,27 +1027,27 @@ class TestGetCourseTabTool:
 class TestListDiscussionTopicsTool:
     """Tests for list_discussion_topics tool handler."""
 
-    def test_requires_course_id(self, mock_canvas_client):
-        from canvas_tools import list_discussion_topics
+    def test_requires_course_id(self, mock_client):
+        from tools.canvas_tools import list_discussion_topics
 
         assert "error" in list_discussion_topics({})
 
-    def test_returns_topics(self, mock_canvas_client):
-        mock_canvas_client.list_discussion_topics.return_value = [
+    def test_returns_topics(self, mock_client):
+        mock_client.list_discussion_topics.return_value = [
             {"id": 10, "title": "Week 1 Discussion", "assignment_id": 42},
         ]
-        mock_canvas_client.list_assignments.return_value = []
-        from canvas_tools import list_discussion_topics
+        mock_client.list_assignments.return_value = []
+        from tools.canvas_tools import list_discussion_topics
 
         result = list_discussion_topics({"course_id": "123"})
         assert result["count"] == 1
         assert result["topics"][0]["title"] == "Week 1 Discussion"
 
     def test_merges_assignment_linked_topics_when_discussion_list_empty(
-        self, mock_canvas_client
+        self, mock_client
     ):
-        mock_canvas_client.list_discussion_topics.return_value = []
-        mock_canvas_client.list_assignments.return_value = [
+        mock_client.list_discussion_topics.return_value = []
+        mock_client.list_assignments.return_value = [
             {
                 "id": 77,
                 "name": "Prompt Discussion",
@@ -933,7 +1061,7 @@ class TestListDiscussionTopicsTool:
                 },
             }
         ]
-        from canvas_tools import list_discussion_topics
+        from tools.canvas_tools import list_discussion_topics
 
         result = list_discussion_topics({"course_id": "123"})
         assert result["count"] == 1
@@ -944,16 +1072,16 @@ class TestListDiscussionTopicsTool:
 class TestListAnnouncementsTool:
     """Tests for list_announcements tool handler."""
 
-    def test_requires_course_ids(self, mock_canvas_client):
-        from canvas_tools import list_announcements
+    def test_requires_course_ids(self, mock_client):
+        from tools.canvas_tools import list_announcements
 
         assert "error" in list_announcements({})
 
-    def test_returns_announcements(self, mock_canvas_client):
-        mock_canvas_client.list_announcements.return_value = [
+    def test_returns_announcements(self, mock_client):
+        mock_client.list_announcements.return_value = [
             {"id": 5, "title": "Welcome!", "message": "<p>Hi</p>"},
         ]
-        from canvas_tools import list_announcements
+        from tools.canvas_tools import list_announcements
 
         result = list_announcements({"course_ids": ["123"]})
         assert result["count"] == 1
@@ -962,11 +1090,11 @@ class TestListAnnouncementsTool:
 class TestListCalendarEventsTool:
     """Tests for list_calendar_events tool handler."""
 
-    def test_returns_events(self, mock_canvas_client):
-        mock_canvas_client.list_calendar_events.return_value = [
+    def test_returns_events(self, mock_client):
+        mock_client.list_calendar_events.return_value = [
             {"id": 1, "title": "Midterm", "type": "assignment"},
         ]
-        from canvas_tools import list_calendar_events
+        from tools.canvas_tools import list_calendar_events
 
         result = list_calendar_events({})
         assert result["count"] == 1
@@ -975,16 +1103,16 @@ class TestListCalendarEventsTool:
 class TestListCoursePeopleTool:
     """Tests for list_course_people tool handler."""
 
-    def test_requires_course_id(self, mock_canvas_client):
-        from canvas_tools import list_course_people
+    def test_requires_course_id(self, mock_client):
+        from tools.canvas_tools import list_course_people
 
         assert "error" in list_course_people({})
 
-    def test_returns_people(self, mock_canvas_client):
-        mock_canvas_client.list_course_users.return_value = [
+    def test_returns_people(self, mock_client):
+        mock_client.list_course_users.return_value = [
             {"id": 1, "name": "Jane Doe", "email": "jane@umd.edu", "enrollments": []},
         ]
-        from canvas_tools import list_course_people
+        from tools.canvas_tools import list_course_people
 
         result = list_course_people({"course_id": "123"})
         assert result["count"] == 1
@@ -995,14 +1123,14 @@ class TestResolveCanvasUrlTool:
     """Tests for resolve_canvas_url tool handler."""
 
     def test_requires_url(self):
-        from canvas_tools import resolve_canvas_url
+        from tools.canvas_tools import resolve_canvas_url
 
         assert "error" in resolve_canvas_url({})
 
     def test_parses_assignment_url(self):
-        from canvas_tools import resolve_canvas_url
+        from tools.canvas_tools import resolve_canvas_url
 
-        with mock.patch("canvas_tools._canvas_client") as mock_client_fn:
+        with mock.patch("tools.canvas_tools._canvas_client") as mock_client_fn:
             mock_client = mock.MagicMock()
             mock_client_fn.return_value = mock_client
             mock_client.get_assignment.return_value = {
@@ -1023,9 +1151,9 @@ class TestResolveCanvasUrlTool:
             assert result["recommended_tool"] == "get_assignment_details"
 
     def test_parses_discussion_url(self):
-        from canvas_tools import resolve_canvas_url
+        from tools.canvas_tools import resolve_canvas_url
 
-        with mock.patch("canvas_tools._canvas_client") as mock_client_fn:
+        with mock.patch("tools.canvas_tools._canvas_client") as mock_client_fn:
             mock_client = mock.MagicMock()
             mock_client_fn.return_value = mock_client
             mock_client.get_discussion_topic_view.return_value = {
@@ -1044,9 +1172,9 @@ class TestResolveCanvasUrlTool:
             assert result["recommended_tool"] == "get_discussion_entries"
 
     def test_parses_page_url(self):
-        from canvas_tools import resolve_canvas_url
+        from tools.canvas_tools import resolve_canvas_url
 
-        with mock.patch("canvas_tools._canvas_client") as mock_client_fn:
+        with mock.patch("tools.canvas_tools._canvas_client") as mock_client_fn:
             mock_client = mock.MagicMock()
             mock_client_fn.return_value = mock_client
             mock_client.get_page.return_value = {
@@ -1066,12 +1194,12 @@ class TestResolveCanvasUrlTool:
             assert result["recommended_tool"] == "canvas_get_page"
 
     def test_course_only_url(self):
-        from canvas_tools import resolve_canvas_url
+        from tools.canvas_tools import resolve_canvas_url
 
-        with mock.patch("canvas_tools._canvas_client") as mock_client_fn:
+        with mock.patch("tools.canvas_tools._canvas_client") as mock_client_fn:
             mock_client = mock.MagicMock()
             mock_client_fn.return_value = mock_client
-            from canvas_api import CanvasAPIError
+            from auth import CanvasAPIError
 
             mock_client.get_course.side_effect = CanvasAPIError("not found")
 
@@ -1085,9 +1213,9 @@ class TestResolveCanvasUrlTool:
             assert result["recommended_tool"] == "get_course_overview"
 
     def test_parses_syllabus_url(self):
-        from canvas_tools import resolve_canvas_url
+        from tools.canvas_tools import resolve_canvas_url
 
-        with mock.patch("canvas_tools._canvas_client") as mock_client_fn:
+        with mock.patch("tools.canvas_tools._canvas_client") as mock_client_fn:
             mock_client = mock.MagicMock()
             mock_client_fn.return_value = mock_client
             mock_client.get_course.return_value = {
@@ -1110,9 +1238,9 @@ class TestResolveCanvasUrlTool:
             assert result["recommended_tool"] == "get_course_syllabus"
 
     def test_parses_people_url(self):
-        from canvas_tools import resolve_canvas_url
+        from tools.canvas_tools import resolve_canvas_url
 
-        with mock.patch("canvas_tools._canvas_client") as mock_client_fn:
+        with mock.patch("tools.canvas_tools._canvas_client") as mock_client_fn:
             mock_client = mock.MagicMock()
             mock_client_fn.return_value = mock_client
             mock_client.list_course_users.return_value = []
@@ -1127,7 +1255,7 @@ class TestResolveCanvasUrlTool:
             assert result["recommended_tool"] == "list_course_people"
 
     def test_parses_unknown_course_subpath(self):
-        from canvas_tools import resolve_canvas_url
+        from tools.canvas_tools import resolve_canvas_url
 
         result = resolve_canvas_url(
             {
@@ -1140,7 +1268,7 @@ class TestResolveCanvasUrlTool:
         assert result["recommended_tool"] is None
 
     def test_keeps_course_id_unexpanded(self):
-        from canvas_tools import resolve_canvas_url
+        from tools.canvas_tools import resolve_canvas_url
 
         result = resolve_canvas_url(
             {
@@ -1154,14 +1282,14 @@ class TestResolveCanvasUrlTool:
 class TestCanvasGetPageTool:
     """Tests for canvas_get_page tool handler."""
 
-    def test_requires_both_params(self, mock_canvas_client):
-        from canvas_tools import canvas_get_page
+    def test_requires_both_params(self, mock_client):
+        from tools.canvas_tools import canvas_get_page
 
         assert "error" in canvas_get_page({"course_id": "1"})
         assert "error" in canvas_get_page({"url_or_id": "home"})
 
-    def test_rejects_non_page_url(self, mock_canvas_client):
-        from canvas_tools import canvas_get_page
+    def test_rejects_non_page_url(self, mock_client):
+        from tools.canvas_tools import canvas_get_page
 
         result = canvas_get_page(
             {
@@ -1172,13 +1300,13 @@ class TestCanvasGetPageTool:
         assert result.get("error") == "unsupported_url_pattern"
         assert result.get("suggested_tool") == "resolve_canvas_url"
 
-    def test_accepts_page_url(self, mock_canvas_client):
-        mock_canvas_client.get_page.return_value = {
+    def test_accepts_page_url(self, mock_client):
+        mock_client.get_page.return_value = {
             "page_id": 1,
             "url": "home",
             "title": "Home",
         }
-        from canvas_tools import canvas_get_page
+        from tools.canvas_tools import canvas_get_page
 
         result = canvas_get_page(
             {
@@ -1194,14 +1322,14 @@ class TestDispatchToolCall:
     """Tests for dispatch_tool_call."""
 
     def test_unknown_tool(self):
-        from canvas_tools import dispatch_tool_call
+        from tools.canvas_tools import dispatch_tool_call
 
         result = dispatch_tool_call("nonexistent_tool")
         assert "error" in result
         assert "Unknown tool" in result["error"]
 
     def test_dispatches_get_today(self):
-        from canvas_tools import dispatch_tool_call
+        from tools.canvas_tools import dispatch_tool_call
 
         result = dispatch_tool_call("get_today")
         assert "today" in result
