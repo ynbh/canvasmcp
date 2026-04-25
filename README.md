@@ -1,91 +1,19 @@
-# canvasmcp
+# canvas-cli
 
-FastMCP server that exposes Canvas LMS tools over MCP.
+Local Canvas LMS access for terminal workflows, coding agents, and optional MCP clients.
 
-## Setup
+Includes:
 
-```bash
-uv sync
-```
-
-## Auth
-
-The installed CLI command is `canvas`.
-
-Auth is Chrome-only:
-
-- The CLI reads Canvas cookies from Chrome via `browser_cookie3`.
-- If `CANVAS_BASE_URL` is set, that domain is used.
-- If `CANVAS_BASE_URL` is unset, the CLI tries to auto-detect a single Canvas domain from Chrome cookies.
-- Chrome cookies are read fresh on every request, so session and CSRF rotation are picked up automatically.
-- Normal CLI commands run a local precheck only (base URL + cookie presence).
-- `canvas auth-status` runs a live Canvas probe and returns JSON even on errors.
-
-> **Note:** macOS will prompt for Keychain access on first run. Click "Allow" or "Always Allow".
-
-### Base URL
-
-```bash
-CANVAS_BASE_URL=https://school.instructure.com
-```
-
-If omitted, the CLI attempts to infer the Canvas domain from Chrome cookies. Set it explicitly if you have multiple Canvas domains in Chrome.
-
-## CLI
-
-List your courses:
-
-```bash
-uv run canvas courses
-```
-
-Inspect one course:
-
-```bash
-uv run canvas course overview 12345
-uv run canvas course context 12345
-```
-
-Work with assignments and discussions:
-
-```bash
-uv run canvas assignments list 12345 --bucket upcoming
-uv run canvas assignments rubric 12345 67890
-uv run canvas discussion show 12345 67890
-```
-
-Use the raw tool escape hatch when needed:
-
-```bash
-uv run canvas tool list
-uv run canvas tool run list_courses --args '{"limit":10}'
-```
-
-Check current auth status:
-
-```bash
-uv run canvas auth-status
-```
-
-Manage Chrome profile selection:
-
-```bash
-uv run canvas settings profiles
-uv run canvas settings choose-profile
-uv run canvas settings choose-profile "terpmail.umd.edu"
-uv run canvas settings show
-uv run canvas settings clear
-```
+- `canvas` CLI
+- optional MCP server
+- Chrome-cookie auth
 
 ## Install
 
-Install the CLI as a tool:
-
 ```bash
+uv sync
 uv tool install .
 ```
-
-That installs the `canvas` command.
 
 Reinstall after local changes:
 
@@ -93,38 +21,172 @@ Reinstall after local changes:
 uv tool install . --reinstall
 ```
 
-## MCP Client Setup
+## Auth
+
+Auth uses Chrome cookies via `browser_cookie3`.
+
+```bash
+canvas auth-status
+canvas settings profiles
+canvas settings choose-profile
+canvas settings show
+```
+
+Set the Canvas host when auto-detection is ambiguous:
+
+```bash
+CANVAS_BASE_URL=https://school.instructure.com
+```
+
+macOS may prompt for Keychain access.
+
+## CLI
+
+Resolve a course:
+
+```bash
+canvas resolve "ENGL394" --all
+canvas courses --all --search ENGL394
+```
+
+Inspect a course:
+
+```bash
+canvas course overview 12345
+canvas course context 12345
+canvas course modules 12345 --items
+canvas course grades 12345
+```
+
+Assignments:
+
+```bash
+canvas assignments list 12345 --bucket upcoming
+canvas assignments list 12345 --search infographic
+canvas assignments show 12345 67890
+canvas assignments rubric 12345 67890
+```
+
+Submissions:
+
+```bash
+canvas course submissions 12345 --student-id self
+canvas course submissions 12345 --assignment 67890 --student-id self
+```
+
+Discussions:
+
+```bash
+canvas discussion list 12345
+canvas discussion show 12345 67890
+```
+
+Files:
+
+```bash
+canvas files list 12345
+canvas files download 12345 67890
+canvas files folders 12345
+```
+
+Calendar and announcements:
+
+```bash
+canvas calendar --course 12345 --type assignment
+canvas announcements --course 12345
+```
+
+Canvas URLs:
+
+```bash
+canvas url "https://school.instructure.com/courses/12345/assignments/67890"
+```
+
+Raw tool fallback:
+
+```bash
+canvas tool list
+canvas tool run list_courses --args '{"limit":10}'
+```
+
+Use `canvas tool run` only when no first-class CLI command exists.
+
+## Agents
+
+Recommended setup:
+
+1. Install the `canvas` CLI.
+2. Give the agent Canvas CLI instructions/skill.
+3. Let the agent call `canvas` from the terminal.
+
+Example commands an agent should prefer:
+
+```bash
+canvas resolve "ENGL394" --all
+canvas assignments list 1402756 --search infographic --limit 20
+canvas assignments rubric 1402756 7543238
+canvas course context 1402756
+```
+
+Example prompts:
+
+```text
+Find my ENGL394 course and summarize assignments due this week.
+```
+
+```text
+Find the rubric for my infographic assignment and turn it into a checklist.
+```
+
+```text
+Check whether I submitted the latest ENGL394 assignment and show the submission receipt details.
+```
+
+Agent rules:
+
+- Resolve the course first.
+- Use first-class CLI commands before raw tool calls.
+- Use assignment search before fetching assignment details when the ID is unknown.
+- Use rubrics for grading criteria and checklist generation.
+- Use submissions for status, feedback, comments, attachments, and rubric assessments.
+- Do not start, answer, or submit quizzes.
+
+## MCP
+
+Optional MCP config:
 
 ```json
 {
   "mcpServers": {
-    "canvasmcp": {
-      "command": "/absolute/path/to/canvasmcp/scripts/start_mcp_server.sh"
+    "canvas": {
+      "command": "/absolute/path/to/canvas-cli/scripts/start_mcp_server.sh"
     }
   }
 }
 ```
 
-## Run As An HTTP Server
-
-FastMCP v3 recommends HTTP transport for networked MCP servers. This project now supports that directly from the existing entrypoint:
+Claude Code:
 
 ```bash
-uv run canvas-mcp --transport http --host 127.0.0.1 --port 8000
+claude mcp add canvas /absolute/path/to/canvas-cli/scripts/start_mcp_server.sh
 ```
 
-By default, FastMCP serves the MCP endpoint at `http://127.0.0.1:8000/mcp`.
-
-You can also use the helper script:
+HTTP transport:
 
 ```bash
-./scripts/start_mcp_server.sh --transport http --host 127.0.0.1 --port 8000
+canvas-mcp --transport http --host 127.0.0.1 --port 8000
 ```
 
-`stdio` remains the default transport for desktop MCP clients. `sse` is still available for legacy clients:
+Default endpoint:
+
+```text
+http://127.0.0.1:8000/mcp
+```
+
+Stdio transport:
 
 ```bash
-uv run canvas-mcp --transport sse --host 127.0.0.1 --port 8000
+canvas-mcp --transport stdio
 ```
 
 ## Tools
@@ -134,37 +196,32 @@ uv run canvas-mcp --transport sse --host 127.0.0.1 --port 8000
 | `get_today()`                                           | Today's date in ISO format                       |
 | `list_courses(favorites_only, search, limit)`           | List courses                                     |
 | `resolve_course(query, favorites_only, limit)`          | Fuzzy-match a course by name                     |
-| `get_course_overview(course_id)`                        | Course-level metadata and teacher info           |
-| `get_course_syllabus(course_id, ...)`                   | Syllabus metadata and optional syllabus body     |
+| `get_course_overview(course_id)`                        | Course metadata                                  |
+| `get_course_syllabus(course_id, ...)`                   | Syllabus metadata and optional body              |
+| `get_course_context_snapshot(course_id, ...)`           | Course overview, upcoming work, modules, grades  |
 | `list_course_assignments(course_id, ...)`               | List assignments                                 |
-| `get_assignment_details(course_id, assignment_id, ...)` | Full assignment details                          |
+| `get_assignment_details(course_id, assignment_id, ...)` | Assignment details                               |
 | `get_assignment_rubric(course_id, assignment_id, ...)`  | Assignment rubric criteria and settings          |
-| `list_course_pages(course_id, ...)`                     | List course pages                                |
-| `list_course_tabs(course_id, ...)`                      | List left-sidebar course navigation tabs         |
-| `get_course_tab(course_id, tab_id, ...)`                | Get one tab and resolve/fetch its target         |
-| `canvas_get_page(course_id, url_or_id, ...)`            | Get a specific wiki page (pages URLs only)       |
-| `list_discussion_topics(course_id, ...)`                | List discussions with exact-title/search filters |
-| `get_discussion_entries(course_id, topic_id, ...)`      | Get discussion thread entries and replies        |
-| `list_course_files(course_id, ...)`                     | List files                                       |
-| `download_course_file(course_id, file_id, ...)`         | Download a file to local temp storage            |
-| `list_course_folders(course_id, limit)`                 | List folders                                     |
-| `list_assignment_groups(course_id, ...)`                | List grading groups and optional assignments     |
-| `list_course_submissions(course_id, ...)`               | List submissions for a student                   |
-| `get_course_grade_summary(course_id, ...)`              | Grade summary + assignment-group breakdown       |
-| `list_modules(course_id, ...)`                          | List modules with optional items                 |
-| `list_announcements(course_ids, ...)`                   | List announcements                               |
-| `list_calendar_events(course_ids, ...)`                 | List calendar events                             |
-| `list_course_people(course_id, ...)`                    | List users in a course                           |
-| `resolve_canvas_url(url, fetch_details)`                | Parse Canvas URL and optionally fetch details    |
-| `get_course_context_snapshot(course_id, ...)`           | Aggregated course context for quick orientation  |
+| `list_assignment_groups(course_id, ...)`                | Assignment groups and optional assignments       |
+| `list_course_submissions(course_id, ...)`               | Submissions for a student                        |
+| `get_course_grade_summary(course_id, ...)`              | Grade summary and assignment-group breakdown     |
+| `list_modules(course_id, ...)`                          | Modules and optional module items                |
+| `list_discussion_topics(course_id, ...)`                | Discussions                                      |
+| `get_discussion_entries(course_id, topic_id, ...)`      | Discussion entries and replies                   |
+| `list_course_pages(course_id, ...)`                     | Course pages                                     |
+| `canvas_get_page(course_id, url_or_id, ...)`            | One wiki page                                    |
+| `list_course_tabs(course_id, ...)`                      | Course navigation tabs                           |
+| `get_course_tab(course_id, tab_id, ...)`                | One navigation tab and optional target           |
+| `list_course_files(course_id, ...)`                     | Files                                            |
+| `download_course_file(course_id, file_id, ...)`         | Download a file                                  |
+| `list_course_folders(course_id, limit)`                 | Folders                                          |
+| `list_announcements(course_ids, ...)`                   | Announcements                                    |
+| `list_calendar_events(course_ids, ...)`                 | Calendar events                                  |
+| `list_course_people(course_id, ...)`                    | Course users                                     |
+| `resolve_canvas_url(url, fetch_details)`                | Parse a Canvas URL and optionally fetch details  |
 
-### Navigation tabs
+## Notes
 
-Use course tabs when you need the left-sidebar entries (Home, Syllabus, People, external tools, etc.) instead of only wiki pages:
-
-- `list_course_tabs(course_id)` to enumerate available tabs and their URLs.
-- `get_course_tab(course_id, tab_id, include_target=true)` to fetch one tab and resolve its destination.
-
-`canvas_get_page` does not fetch assignment submission preview routes. Use `resolve_canvas_url` for routing those URLs to the right tool.
-
-For `list_course_submissions` with `student_id` other than `self`, your Canvas account must have permission to read other students' submissions in that course.
+- `canvas_get_page` only fetches wiki pages. Use `canvas url ...` for Canvas URLs whose type is unknown.
+- Non-self submission queries require Canvas permissions for viewing other students.
+- Quiz support should remain read-only.

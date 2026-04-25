@@ -146,8 +146,6 @@ def resolve_canvas_resource_details(
 ) -> dict[str, Any] | None:
     from tools.assignments import (
         get_assignment_details,
-        get_course_grade_summary,
-        list_course_submissions,
     )
     from tools.courses import (
         get_course_overview,
@@ -156,6 +154,8 @@ def resolve_canvas_resource_details(
         list_course_people,
     )
     from tools.discussions import get_discussion_entries, list_discussion_topics
+    from tools.grades import get_course_grade_summary
+    from tools.submissions import list_course_submissions
 
     if resource_type == "course":
         return get_course_overview({"course_id": course_id})
@@ -319,9 +319,10 @@ def get_course_context_snapshot(args: dict[str, Any]) -> dict[str, Any]:
     modules_limit = clamp(args.get("modules_limit"), 20)
     module_items_limit = clamp(args.get("module_items_limit"), 50)
 
-    from tools.assignments import get_course_grade_summary, list_course_assignments
+    from tools.assignments import list_course_assignments
     from tools.courses import get_course_overview, get_course_syllabus
     from tools.files import list_modules
+    from tools.grades import get_course_grade_summary
 
     snapshot: dict[str, Any] = {"course_id": course_id}
     errors: list[dict[str, str]] = []

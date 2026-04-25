@@ -1,10 +1,8 @@
 from tools.assignments import (
     get_assignment_details,
     get_assignment_rubric,
-    get_course_grade_summary,
     list_assignment_groups,
     list_course_assignments,
-    list_course_submissions,
 )
 from tools.courses import (
     get_course_overview,
@@ -23,6 +21,7 @@ from tools.files import (
     list_course_folders,
     list_modules,
 )
+from tools.grades import get_course_grade_summary
 from tools.misc import (
     canvas_get_page,
     get_course_context_snapshot,
@@ -31,6 +30,7 @@ from tools.misc import (
     list_calendar_events,
     resolve_canvas_url,
 )
+from tools.submissions import list_course_submissions
 
 __all__ = [
     "canvas_get_page",
