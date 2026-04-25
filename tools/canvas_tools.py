@@ -64,6 +64,10 @@ def get_assignment_details(args: dict[str, Any]) -> dict[str, Any]:
     return _call(assignments.get_assignment_details, args)
 
 
+def get_assignment_rubric(args: dict[str, Any]) -> dict[str, Any]:
+    return _call(assignments.get_assignment_rubric, args)
+
+
 def list_course_files(args: dict[str, Any]) -> dict[str, Any]:
     return _call(files.list_course_files, args)
 

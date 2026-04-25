@@ -50,6 +50,7 @@ Work with assignments and discussions:
 
 ```bash
 uv run canvas assignments list 12345 --bucket upcoming
+uv run canvas assignments rubric 12345 67890
 uv run canvas discussion show 12345 67890
 ```
 
@@ -137,6 +138,7 @@ uv run canvas-mcp --transport sse --host 127.0.0.1 --port 8000
 | `get_course_syllabus(course_id, ...)`                   | Syllabus metadata and optional syllabus body     |
 | `list_course_assignments(course_id, ...)`               | List assignments                                 |
 | `get_assignment_details(course_id, assignment_id, ...)` | Full assignment details                          |
+| `get_assignment_rubric(course_id, assignment_id, ...)`  | Assignment rubric criteria and settings          |
 | `list_course_pages(course_id, ...)`                     | List course pages                                |
 | `list_course_tabs(course_id, ...)`                      | List left-sidebar course navigation tabs         |
 | `get_course_tab(course_id, tab_id, ...)`                | Get one tab and resolve/fetch its target         |

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from tools import (
     get_assignment_details,
+    get_assignment_rubric,
     list_assignment_groups,
     list_course_assignments,
     list_course_submissions,
@@ -28,12 +29,29 @@ ASSIGNMENT_TOOL_SPECS: list[ToolSpec] = [
     ),
     tool_spec(
         name="get_assignment_details",
-        description="Get full details for a single assignment in a course.",
+        description=(
+            "Get full details for a single assignment in a course, including rubric "
+            "fields when Canvas returns them."
+        ),
         handler=get_assignment_details,
         properties={
             "course_id": {"type": "string"},
             "assignment_id": {"type": "string"},
             "include_submission": {"type": "boolean"},
+        },
+        required=["course_id", "assignment_id"],
+    ),
+    tool_spec(
+        name="get_assignment_rubric",
+        description="Get the rubric criteria/settings for a single assignment.",
+        handler=get_assignment_rubric,
+        properties={
+            "course_id": {"type": "string"},
+            "assignment_id": {"type": "string"},
+            "include_assessment": {
+                "type": "boolean",
+                "description": "Include the current user's rubric assessment when available.",
+            },
         },
         required=["course_id", "assignment_id"],
     ),

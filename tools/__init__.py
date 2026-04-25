@@ -1,5 +1,6 @@
 from tools.assignments import (
     get_assignment_details,
+    get_assignment_rubric,
     get_course_grade_summary,
     list_assignment_groups,
     list_course_assignments,
@@ -35,6 +36,7 @@ __all__ = [
     "canvas_get_page",
     "download_course_file",
     "get_assignment_details",
+    "get_assignment_rubric",
     "get_course_context_snapshot",
     "get_course_grade_summary",
     "get_course_overview",

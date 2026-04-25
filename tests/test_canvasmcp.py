@@ -948,11 +948,100 @@ class TestGetAssignmentDetailsTool:
             "name": "Midterm",
             "description": "<p>Exam</p>",
             "points_possible": 100,
+            "rubric": [{"id": "crit1", "description": "Correctness", "points": 10}],
+            "rubric_settings": {"points_possible": 10},
         }
         from tools.canvas_tools import get_assignment_details
 
         result = get_assignment_details({"course_id": "1", "assignment_id": "42"})
         assert result["assignment"]["name"] == "Midterm"
+        assert result["assignment"]["rubric"][0]["description"] == "Correctness"
+
+
+class TestGetAssignmentRubricTool:
+    """Tests for get_assignment_rubric tool handler."""
+
+    def test_requires_both_ids(self, mock_client):
+        from tools.canvas_tools import get_assignment_rubric
+
+        assert "error" in get_assignment_rubric({"course_id": "1"})
+        assert "error" in get_assignment_rubric({"assignment_id": "1"})
+
+    def test_returns_rubric(self, mock_client):
+        mock_client.get_assignment.return_value = {
+            "id": 42,
+            "name": "Essay",
+            "points_possible": 15,
+            "rubric": [
+                {
+                    "id": "crit1",
+                    "description": "Thesis",
+                    "points": 5,
+                    "ratings": [{"description": "Full marks", "points": 5}],
+                }
+            ],
+            "rubric_settings": {"title": "Essay rubric"},
+            "use_rubric_for_grading": True,
+        }
+        from tools.canvas_tools import get_assignment_rubric
+
+        result = get_assignment_rubric({"course_id": "1", "assignment_id": "42"})
+
+        assert result["assignment_name"] == "Essay"
+        assert result["criteria_count"] == 1
+        assert result["rubric_settings"]["title"] == "Essay rubric"
+        mock_client.get_assignment.assert_called_once_with(
+            course_id="1",
+            assignment_id="42",
+            include_submission=False,
+            include_discussion_topic=False,
+        )
+
+    def test_can_return_current_user_assessment(self, mock_client):
+        mock_client.get_assignment.return_value = {
+            "id": 42,
+            "name": "Essay",
+            "rubric": [],
+            "submission": {
+                "rubric_assessment": {
+                    "crit1": {"points": 4, "comments": "Good support"}
+                }
+            },
+        }
+        from tools.canvas_tools import get_assignment_rubric
+
+        result = get_assignment_rubric(
+            {"course_id": "1", "assignment_id": "42", "include_assessment": True}
+        )
+
+        assert result["rubric_assessment"]["crit1"]["points"] == 4
+        assert result["assessment_source"] == "submission"
+        mock_client.list_submissions.assert_not_called()
+
+    def test_falls_back_to_submission_include_for_assessment(self, mock_client):
+        mock_client.get_assignment.return_value = {
+            "id": 42,
+            "name": "Essay",
+            "rubric": [],
+        }
+        mock_client.list_submissions.return_value = [
+            {"rubric_assessment": {"crit1": {"points": 3}}}
+        ]
+        from tools.canvas_tools import get_assignment_rubric
+
+        result = get_assignment_rubric(
+            {"course_id": "1", "assignment_id": "42", "include_assessment": True}
+        )
+
+        assert result["rubric_assessment"]["crit1"]["points"] == 3
+        mock_client.list_submissions.assert_called_once_with(
+            course_id="1",
+            student_id="self",
+            assignment_ids=["42"],
+            include=["rubric_assessment"],
+            grouped=False,
+            limit=1,
+        )
 
 
 class TestListCourseFilesTool:

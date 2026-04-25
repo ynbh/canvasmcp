@@ -52,6 +52,26 @@ def register(invoke: Callable[[str, dict], None]) -> typer.Typer:
             },
         )
 
+    @assignments_app.command("rubric")
+    def assignments_rubric(
+        course_id: Annotated[str, typer.Argument(help="Canvas course ID.")],
+        assignment_id: Annotated[str, typer.Argument(help="Assignment ID.")],
+        include_assessment: Annotated[
+            bool,
+            typer.Option(
+                help="Include current user's rubric assessment when available."
+            ),
+        ] = False,
+    ) -> None:
+        invoke(
+            "get_assignment_rubric",
+            {
+                "course_id": course_id,
+                "assignment_id": assignment_id,
+                "include_assessment": include_assessment,
+            },
+        )
+
     @assignments_app.command("groups")
     def assignments_groups(
         course_id: Annotated[str, typer.Argument(help="Canvas course ID.")],
