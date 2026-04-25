@@ -5,7 +5,7 @@ description: Use the local `canvas` CLI for Canvas LMS workflows. Trigger when y
 
 # Canvas CLI Agent Instructions
 
-Run commands from the repo root with `uv run canvas ...`.
+Run commands with the installed `canvas` executable. Use `uv run canvas` only when working inside this repository before installation.
 
 ## Rules
 
@@ -21,10 +21,10 @@ Run commands from the repo root with `uv run canvas ...`.
 ## Auth
 
 ```bash
-uv run canvas auth-status
-uv run canvas settings show
-uv run canvas settings profiles
-uv run canvas settings choose-profile "<profile-name>"
+canvas auth-status
+canvas settings show
+canvas settings profiles
+canvas settings choose-profile "<profile-name>"
 ```
 
 Use `auth-status` first when any Canvas command fails unexpectedly.
@@ -32,8 +32,8 @@ Use `auth-status` first when any Canvas command fails unexpectedly.
 ## Course Resolution
 
 ```bash
-uv run canvas tool run resolve_course --args '{"query":"ENGL394","favorites_only":false,"limit":10}'
-uv run canvas courses --all --search ENGL394
+canvas tool run resolve_course --args '{"query":"ENGL394","favorites_only":false,"limit":10}'
+canvas courses --all --search ENGL394
 ```
 
 Best practice:
@@ -45,10 +45,10 @@ Best practice:
 ## Assignments
 
 ```bash
-uv run canvas assignments list <course_id> --search infographic --limit 20
-uv run canvas assignments list <course_id> --bucket upcoming
-uv run canvas assignments show <course_id> <assignment_id>
-uv run canvas assignments groups <course_id> --assignments
+canvas assignments list <course_id> --search infographic --limit 20
+canvas assignments list <course_id> --bucket upcoming
+canvas assignments show <course_id> <assignment_id>
+canvas assignments groups <course_id> --assignments
 ```
 
 Best practice:
@@ -60,8 +60,8 @@ Best practice:
 ## Rubrics
 
 ```bash
-uv run canvas assignments rubric <course_id> <assignment_id>
-uv run canvas assignments rubric <course_id> <assignment_id> --include-assessment
+canvas assignments rubric <course_id> <assignment_id>
+canvas assignments rubric <course_id> <assignment_id> --include-assessment
 ```
 
 Best practice:
@@ -75,17 +75,17 @@ Best practice:
 Example workflow:
 
 ```bash
-uv run canvas tool run resolve_course --args '{"query":"ENGL394","favorites_only":false,"limit":10}'
-uv run canvas assignments list 1402756 --search infographic --limit 20
-uv run canvas assignments rubric 1402756 7543238
+canvas tool run resolve_course --args '{"query":"ENGL394","favorites_only":false,"limit":10}'
+canvas assignments list 1402756 --search infographic --limit 20
+canvas assignments rubric 1402756 7543238
 ```
 
 ## Discussions
 
 ```bash
-uv run canvas discussion list <course_id>
-uv run canvas discussion list <course_id> --search planning
-uv run canvas discussion show <course_id> <topic_id>
+canvas discussion list <course_id>
+canvas discussion list <course_id> --search planning
+canvas discussion show <course_id> <topic_id>
 ```
 
 Best practice:
@@ -96,10 +96,10 @@ Best practice:
 ## Files
 
 ```bash
-uv run canvas files list <course_id>
-uv run canvas files list <course_id> --search syllabus
-uv run canvas files download <course_id> <file_id>
-uv run canvas files folders <course_id>
+canvas files list <course_id>
+canvas files list <course_id> --search syllabus
+canvas files download <course_id> <file_id>
+canvas files folders <course_id>
 ```
 
 Best practice:
@@ -110,9 +110,9 @@ Best practice:
 ## Grades And Submissions
 
 ```bash
-uv run canvas course grades <course_id>
-uv run canvas course submissions <course_id> --student-id self
-uv run canvas course submissions <course_id> --assignment <assignment_id> --student-id self
+canvas course grades <course_id>
+canvas course submissions <course_id> --student-id self
+canvas course submissions <course_id> --assignment <assignment_id> --student-id self
 ```
 
 Best practice:
@@ -124,11 +124,11 @@ Best practice:
 ## Course Structure
 
 ```bash
-uv run canvas course overview <course_id>
-uv run canvas course modules <course_id> --items
-uv run canvas course pages <course_id>
-uv run canvas course tabs <course_id>
-uv run canvas course people <course_id> --email
+canvas course overview <course_id>
+canvas course modules <course_id> --items
+canvas course pages <course_id>
+canvas course tabs <course_id>
+canvas course people <course_id> --email
 ```
 
 Best practice:
@@ -139,9 +139,9 @@ Best practice:
 ## Calendar And Announcements
 
 ```bash
-uv run canvas announcements --course <course_id>
-uv run canvas calendar --course <course_id>
-uv run canvas calendar --course <course_id> --type assignment
+canvas announcements --course <course_id>
+canvas calendar --course <course_id>
+canvas calendar --course <course_id> --type assignment
 ```
 
 Best practice:
@@ -152,7 +152,7 @@ Best practice:
 ## URL Lookup
 
 ```bash
-uv run canvas url "https://umd.instructure.com/courses/<course_id>/assignments/<assignment_id>"
+canvas url "https://umd.instructure.com/courses/<course_id>/assignments/<assignment_id>"
 ```
 
 Best practice:
@@ -163,8 +163,8 @@ Best practice:
 ## Raw Tool Escape Hatch
 
 ```bash
-uv run canvas tool list
-uv run canvas tool run <tool_name> --args '{"course_id":"12345"}'
+canvas tool list
+canvas tool run <tool_name> --args '{"course_id":"12345"}'
 ```
 
 Use this for newly added MCP tools before a first-class CLI command exists.
