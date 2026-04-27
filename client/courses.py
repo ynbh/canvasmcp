@@ -117,18 +117,13 @@ class CanvasCoursesMixin:
                 include.append("content_details")
             if include:
                 params["include"] = include
+            if search:
+                params["search_term"] = search
 
             modules = self._paginate_list(
                 course.get_modules(**params),
-                limit=300 if search else limit,
+                limit=limit,
             )
-            if search:
-                query = search.casefold()
-                modules = [
-                    module
-                    for module in modules
-                    if query in str(module.get("name", "")).casefold()
-                ][: max(1, min(int(limit), 300))]
 
             if include_items:
                 for module in modules:
