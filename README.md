@@ -10,15 +10,29 @@ Includes:
 
 ## Install
 
+Preferred install:
+
 ```bash
-uv sync
-uv tool install .
+uv tool install git+https://github.com/ynbh/canvasmcp.git
+canvas --help
+canvas-mcp --help
 ```
 
-Reinstall after local changes:
+Pin to a branch, tag, or commit when needed:
 
 ```bash
-uv tool install . --reinstall
+uv tool install git+https://github.com/ynbh/canvasmcp.git@main
+uv tool install git+https://github.com/ynbh/canvasmcp.git@<commit-or-tag>
+```
+
+## Development
+
+For local development from a checkout:
+
+```bash
+uv sync
+uv run canvas --help
+uv run canvas-mcp --help
 ```
 
 ## Auth
