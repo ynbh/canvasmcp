@@ -103,10 +103,11 @@ canvas files download 12345 67890
 canvas files folders 12345
 ```
 
-Calendar and announcements:
+To Do and announcements:
 
 ```bash
-canvas calendar --course 12345 --type assignment
+canvas todo
+canvas todo --course 12345
 canvas announcements --course 12345
 ```
 
@@ -230,7 +231,7 @@ canvas-mcp --transport stdio
 | `download_course_file(course_id, file_id, ...)`         | Download a file                                  |
 | `list_course_folders(course_id, limit)`                 | Folders                                          |
 | `list_announcements(course_ids, ...)`                   | Announcements                                    |
-| `list_calendar_events(course_ids, ...)`                 | Calendar events                                  |
+| `list_todo_items(course_ids, limit)`                    | Current user's Canvas To Do items                |
 | `list_course_people(course_id, ...)`                    | Course users                                     |
 | `resolve_canvas_url(url, fetch_details)`                | Parse a Canvas URL and optionally fetch details  |
 

@@ -107,34 +107,41 @@ def list_announcements(args: dict[str, Any]) -> dict[str, Any]:
     return {"course_ids": course_ids, "count": len(items), "announcements": items}
 
 
-def list_calendar_events(args: dict[str, Any]) -> dict[str, Any]:
+def list_todo_items(args: dict[str, Any]) -> dict[str, Any]:
     raw_course_ids = args.get("course_ids") or []
     course_ids = [
         str(course_id).strip() for course_id in raw_course_ids if str(course_id).strip()
     ]
     limit = clamp(args.get("limit"), 100)
-    events = canvas_client().list_calendar_events(
+    todo_items = canvas_client().list_todo_items(
         course_ids=course_ids or None,
-        event_type=str(args.get("type")) if args.get("type") else None,
-        start_date=str(args.get("start_date")) if args.get("start_date") else None,
-        end_date=str(args.get("end_date")) if args.get("end_date") else None,
-        all_events=bool(args.get("all_events")) if "all_events" in args else None,
         limit=limit,
     )
     items = [
         {
-            "id": str(event.get("id", "")),
-            "title": event.get("title", "Untitled event"),
-            "context_code": event.get("context_code"),
-            "type": event.get("type"),
-            "start_at": event.get("start_at"),
-            "end_at": event.get("end_at"),
-            "all_day": bool(event.get("all_day")),
-            "html_url": event.get("html_url"),
+            "type": item.get("type"),
+            "course_id": str(item.get("course_id", "")),
+            "context_name": item.get("context_name"),
+            "context_type": item.get("context_type"),
+            "html_url": item.get("html_url"),
+            "ignore": bool(item.get("ignore", False)),
+            "ignore_permanently": bool(item.get("ignore_permanently", False)),
+            "assignment": _map_todo_assignment(item.get("assignment") or {}),
         }
-        for event in events
+        for item in todo_items
     ]
-    return {"course_ids": course_ids, "count": len(items), "events": items}
+    return {"course_ids": course_ids, "count": len(items), "todo": items}
+
+
+def _map_todo_assignment(assignment: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": str(assignment.get("id", "")),
+        "name": assignment.get("name"),
+        "due_at": assignment.get("due_at"),
+        "points_possible": assignment.get("points_possible"),
+        "submission_types": assignment.get("submission_types"),
+        "html_url": assignment.get("html_url"),
+    }
 
 
 def resolve_canvas_resource_details(

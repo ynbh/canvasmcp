@@ -136,18 +136,18 @@ Best practice:
 - Use modules for "what do I need to do next?" questions.
 - Use pages/tabs when the user asks for syllabus, resources, or course navigation content.
 
-## Calendar And Announcements
+## To Do And Announcements
 
 ```bash
 canvas announcements --course <course_id>
-canvas calendar --course <course_id>
-canvas calendar --course <course_id> --type assignment
+canvas todo
+canvas todo --course <course_id>
 ```
 
 Best practice:
 
-- Use calendar for date-range questions and cross-course agenda questions.
-- Use assignment APIs for full assignment details; calendar entries are summaries.
+- Use todo for the user's current Canvas To Do list and cross-course upcoming work.
+- Use assignment APIs for full assignment details; todo entries are summaries.
 
 ## URL Lookup
 

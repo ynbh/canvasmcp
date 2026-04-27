@@ -373,17 +373,23 @@ class TestListAnnouncementsTool:
         assert result["count"] == 1
 
 
-class TestListCalendarEventsTool:
-    """Tests for list_calendar_events tool handler."""
+class TestListTodoItemsTool:
+    """Tests for list_todo_items tool handler."""
 
-    def test_returns_events(self, mock_client):
-        mock_client.list_calendar_events.return_value = [
-            {"id": 1, "title": "Midterm", "type": "assignment"},
+    def test_returns_todo_items(self, mock_client):
+        mock_client.list_todo_items.return_value = [
+            {
+                "type": "submitting",
+                "course_id": 123,
+                "context_name": "MATH101",
+                "assignment": {"id": 1, "name": "Midterm", "due_at": "2026-04-29"},
+            },
         ]
-        from tools import list_calendar_events
+        from tools import list_todo_items
 
-        result = list_calendar_events({})
+        result = list_todo_items({})
         assert result["count"] == 1
+        assert result["todo"][0]["assignment"]["name"] == "Midterm"
 
 
 class TestListCoursePeopleTool:

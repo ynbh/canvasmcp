@@ -97,34 +97,17 @@ def register(
         )
 
     @app.command()
-    def calendar(
+    def todo(
         course_id: Annotated[
             list[str] | None,
             typer.Option("--course", help="Course ID. Repeat for multiple courses."),
         ] = None,
-        type: Annotated[
-            str | None, typer.Option(help="event, assignment, or both.")
-        ] = None,
-        start_date: Annotated[
-            str | None, typer.Option(help="ISO datetime lower bound.")
-        ] = None,
-        end_date: Annotated[
-            str | None, typer.Option(help="ISO datetime upper bound.")
-        ] = None,
-        all_events: Annotated[
-            bool | None,
-            typer.Option(help="Request all matching events instead of the default filtered view."),
-        ] = None,
-        limit: Annotated[int, typer.Option(help="Maximum events.")] = 100,
+        limit: Annotated[int, typer.Option(help="Maximum To Do items.")] = 100,
     ) -> None:
         invoke(
-            "list_calendar_events",
+            "list_todo_items",
             {
                 "course_ids": course_id or [],
-                "type": type,
-                "start_date": start_date,
-                "end_date": end_date,
-                "all_events": all_events,
                 "limit": limit,
             },
         )

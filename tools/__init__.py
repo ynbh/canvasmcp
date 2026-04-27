@@ -27,7 +27,7 @@ from tools.misc import (
     get_course_context_snapshot,
     get_today,
     list_announcements,
-    list_calendar_events,
+    list_todo_items,
     resolve_canvas_url,
 )
 from tools.submissions import list_course_submissions
@@ -46,7 +46,6 @@ __all__ = [
     "get_today",
     "list_announcements",
     "list_assignment_groups",
-    "list_calendar_events",
     "list_course_assignments",
     "list_course_files",
     "list_course_folders",
@@ -57,6 +56,7 @@ __all__ = [
     "list_courses",
     "list_discussion_topics",
     "list_modules",
+    "list_todo_items",
     "resolve_canvas_url",
     "resolve_course",
 ]

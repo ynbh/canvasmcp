@@ -9,6 +9,11 @@ from auth import CanvasAPIError
 from .base import MAX_PER_PAGE
 
 
+class _CanvasDictItem:
+    def __init__(self, _: Any, attributes: dict[str, Any]) -> None:
+        self.__dict__.update(attributes)
+
+
 class CanvasContentMixin:
     def list_discussion_topics(
         self,
@@ -210,29 +215,36 @@ class CanvasContentMixin:
 
         return self._call_canvas(_load, "list announcements")
 
-    def list_calendar_events(
+    def list_todo_items(
         self,
         *,
         course_ids: list[str] | None = None,
-        event_type: str | None = None,
-        start_date: str | None = None,
-        end_date: str | None = None,
-        all_events: bool | None = None,
         limit: int = 100,
     ) -> list[dict[str, Any]]:
         def _load(canvas: Canvas) -> list[dict[str, Any]]:
-            params: dict[str, Any] = {"per_page": MAX_PER_PAGE}
-            if course_ids:
-                params["context_codes"] = course_ids
-            if event_type and event_type != "both":
-                params["type"] = event_type
-            if start_date:
-                params["start_date"] = start_date
-            if end_date:
-                params["end_date"] = end_date
-            if all_events is not None:
-                params["all_events"] = all_events
-            events = canvas.get_calendar_events(**params)
-            return self._paginate_list(events, limit=limit)
+            if not course_ids:
+                items = self._custom_paginated_call(
+                    canvas,
+                    content_class=_CanvasDictItem,
+                    endpoint="users/self/todo",
+                    params={"per_page": MAX_PER_PAGE},
+                )
+                return self._paginate_list(items, limit=limit)
 
-        return self._call_canvas(_load, "list calendar events")
+            todo_items: list[dict[str, Any]] = []
+            safe_limit = max(1, min(int(limit), 300))
+            for course_id in course_ids:
+                course_items = self._custom_paginated_call(
+                    canvas,
+                    content_class=_CanvasDictItem,
+                    endpoint=f"courses/{course_id}/todo",
+                    params={"per_page": MAX_PER_PAGE},
+                )
+                todo_items.extend(
+                    self._paginate_list(course_items, limit=safe_limit - len(todo_items))
+                )
+                if len(todo_items) >= safe_limit:
+                    break
+            return todo_items
+
+        return self._call_canvas(_load, "list todo items")

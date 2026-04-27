@@ -4,10 +4,10 @@ from tools import (
     download_course_file,
     get_discussion_entries,
     list_announcements,
-    list_calendar_events,
     list_course_files,
     list_course_folders,
     list_discussion_topics,
+    list_todo_items,
 )
 
 from specs.schema import ToolSpec, tool_spec
@@ -92,15 +92,11 @@ CONTENT_TOOL_SPECS: list[ToolSpec] = [
         required=["course_ids"],
     ),
     tool_spec(
-        name="list_calendar_events",
-        description="List calendar events and assignments.",
-        handler=list_calendar_events,
+        name="list_todo_items",
+        description="List current user's Canvas To Do items.",
+        handler=list_todo_items,
         properties={
             "course_ids": {"type": "array", "items": {"type": "string"}},
-            "type": {"type": "string", "enum": ["event", "assignment", "both"]},
-            "start_date": {"type": "string", "description": "ISO datetime."},
-            "end_date": {"type": "string", "description": "ISO datetime."},
-            "all_events": {"type": "boolean"},
             "limit": {"type": "integer", "minimum": 1, "maximum": 300},
         },
     ),
