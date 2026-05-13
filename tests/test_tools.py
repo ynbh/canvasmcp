@@ -178,10 +178,10 @@ class TestGetAssignmentRubricTool:
         )
 
         assert result["rubric_assessment"]["crit1"]["points"] == 4
-        assert result["assessment_source"] == "submission"
+        assert result["assessment_source"] == "assignment_submission"
         mock_client.list_submissions.assert_not_called()
 
-    def test_falls_back_to_submission_include_for_assessment(self, mock_client):
+    def test_uses_submissions_api_for_missing_assignment_assessment(self, mock_client):
         mock_client.get_assignment.return_value = {
             "id": 42,
             "name": "Essay",
@@ -197,6 +197,7 @@ class TestGetAssignmentRubricTool:
         )
 
         assert result["rubric_assessment"]["crit1"]["points"] == 3
+        assert result["assessment_source"] == "submissions_api"
         mock_client.list_submissions.assert_called_once_with(
             course_id="1",
             student_id="self",
@@ -205,6 +206,31 @@ class TestGetAssignmentRubricTool:
             grouped=False,
             limit=1,
         )
+
+    def test_rubric_assessment_submission_lookup_uses_raw_assignment_id(
+        self, mock_client
+    ):
+        mock_client.get_assignment.return_value = {
+            "id": "13980000007438508",
+            "name": "Essay",
+            "rubric": [],
+        }
+        mock_client.list_submissions.return_value = [
+            {"rubric_assessment": {"crit1": {"points": 3}}}
+        ]
+        from tools import get_assignment_rubric
+
+        get_assignment_rubric(
+            {
+                "course_id": "1398466",
+                "assignment_id": "1398~7438508",
+                "include_assessment": True,
+            }
+        )
+
+        assert mock_client.list_submissions.call_args.kwargs["assignment_ids"] == [
+            "7438508"
+        ]
 
 
 class TestListCourseFilesTool:
