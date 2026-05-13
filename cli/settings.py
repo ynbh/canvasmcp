@@ -6,10 +6,11 @@ import sys
 import typer
 from rich.console import Console
 
+import auth.settings as auth_settings
 from auth import CanvasAPIError, get_auth_status
-from auth.inspect import describe_chrome_profiles
 from auth.chrome_cookies import resolve_chrome_profile
-from auth.settings import clear_settings, load_settings, set_selected_profile
+from auth.inspect import describe_chrome_profiles
+from auth.settings import clear_settings, set_selected_profile
 
 console = Console()
 settings_app = typer.Typer(help="Saved Chrome profile selection and auth state.")
@@ -31,7 +32,7 @@ def settings_show() -> None:
             "error": str(exc),
         }
     payload = {
-        "settings": load_settings(),
+        "settings": auth_settings.load_settings(),
         "auth": auth,
     }
     console.print_json(json.dumps(payload, default=str))

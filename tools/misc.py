@@ -195,6 +195,7 @@ def resolve_canvas_resource_details(
                     course_id=course_id,
                     assignment_id=candidate,
                     include_submission=False,
+                    include_discussion_topic=False,
                 )
                 return {
                     "course_id": course_id,
