@@ -3,6 +3,7 @@ from __future__ import annotations
 from tools import (
     get_assignment_details,
     get_assignment_rubric,
+    install_assignment_submission_files,
     list_assignment_groups,
     list_course_assignments,
     list_course_submissions,
@@ -83,5 +84,18 @@ ASSIGNMENT_TOOL_SPECS: list[ToolSpec] = [
             "limit": {"type": "integer", "minimum": 1, "maximum": 300},
         },
         required=["course_id"],
+    ),
+    tool_spec(
+        name="install_assignment_submission_files",
+        description=(
+            "Download attachment files from the current user's submission for one assignment."
+        ),
+        handler=install_assignment_submission_files,
+        properties={
+            "course_id": {"type": "string"},
+            "assignment_id": {"type": "string"},
+            "force_refresh": {"type": "boolean"},
+        },
+        required=["course_id", "assignment_id"],
     ),
 ]

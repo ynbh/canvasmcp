@@ -396,6 +396,37 @@ class TestGeneratedCli:
             {"favorites_only": False, "search": None, "limit": 10},
         )
 
+    def test_assignment_submission_install_dispatches_expected_args(self):
+        import cli
+        import cli.bootstrap as cli_boot
+
+        runner = CliRunner()
+        with (
+            mock.patch.object(cli_boot, "_ensure_auth"),
+            mock.patch.object(cli_boot, "dispatch_tool_call") as dispatch,
+        ):
+            dispatch.return_value = {"count": 0, "files": []}
+            result = runner.invoke(
+                cli.app,
+                [
+                    "assignments",
+                    "submissions",
+                    "install",
+                    "12345",
+                    "67890",
+                    "--force-refresh",
+                ],
+            )
+        assert result.exit_code == 0
+        dispatch.assert_called_once_with(
+            "install_assignment_submission_files",
+            {
+                "course_id": "12345",
+                "assignment_id": "67890",
+                "force_refresh": True,
+            },
+        )
+
     def test_today_does_not_require_auth(self):
         import cli
         import cli.bootstrap as cli_boot

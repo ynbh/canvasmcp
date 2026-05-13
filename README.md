@@ -142,6 +142,7 @@ Then use that course ID with the relevant command:
 canvas course context 12345
 canvas assignments list 12345 --bucket upcoming
 canvas assignments show 12345 67890 --include-submission
+canvas assignments submissions install 12345 67890
 canvas discussion show 12345 98765
 ```
 
@@ -292,6 +293,18 @@ canvas tool run list_course_submissions --args '{"course_id":"12345","student_id
 ```
 
 Useful for checking submitted files, timestamps, comments, rubric assessments, and grade feedback. Non-self queries require Canvas permissions.
+
+### `install_assignment_submission_files`
+
+Downloads attachment files from the current user's submission for one assignment.
+
+```bash
+canvas assignments submissions install 12345 67890
+canvas assignments submissions install 12345 67890 --force-refresh
+canvas tool run install_assignment_submission_files --args '{"course_id":"12345","assignment_id":"67890","force_refresh":true}'
+```
+
+Useful for installing submitted files into a local assignment-scoped download folder. Attachments without Canvas file IDs are reported as skipped.
 
 ### `get_course_grade_summary`
 

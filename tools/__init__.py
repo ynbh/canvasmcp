@@ -30,7 +30,10 @@ from tools.misc import (
     list_todo_items,
     resolve_canvas_url,
 )
-from tools.submissions import list_course_submissions
+from tools.submissions import (
+    install_assignment_submission_files,
+    list_course_submissions,
+)
 
 __all__ = [
     "canvas_get_page",
@@ -44,6 +47,7 @@ __all__ = [
     "get_course_tab",
     "get_discussion_entries",
     "get_today",
+    "install_assignment_submission_files",
     "list_announcements",
     "list_assignment_groups",
     "list_course_assignments",
