@@ -7,6 +7,7 @@ from tools.common import (
     clamp,
     extract_discussion_topic_id,
     id_aliases,
+    short_canvas_id,
 )
 
 
@@ -131,21 +132,26 @@ def get_assignment_rubric(args: dict[str, Any]) -> dict[str, Any]:
 
     submission = assignment.get("submission")
     assessment = None
+    assessment_source = None
     if isinstance(submission, dict):
         assessment = submission.get("rubric_assessment")
+        if assessment is not None:
+            assessment_source = "assignment_submission"
 
     assignment_id_value = str(assignment.get("id", ""))
     if include_assessment and assessment is None:
         submissions = client.list_submissions(
             course_id=course_id,
             student_id="self",
-            assignment_ids=[assignment_id_value or assignment_id],
+            assignment_ids=[short_canvas_id(assignment_id_value or assignment_id)],
             include=["rubric_assessment"],
             grouped=False,
             limit=1,
         )
         if submissions:
             assessment = submissions[0].get("rubric_assessment")
+            if assessment is not None:
+                assessment_source = "submissions_api"
 
     rubric = assignment.get("rubric") or []
     return {
@@ -160,7 +166,7 @@ def get_assignment_rubric(args: dict[str, Any]) -> dict[str, Any]:
         "criteria_count": len(rubric) if isinstance(rubric, list) else 0,
         "rubric": rubric,
         "rubric_assessment": assessment,
-        "assessment_source": "submission" if assessment is not None else None,
+        "assessment_source": assessment_source,
     }
 
 
