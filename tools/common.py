@@ -52,6 +52,29 @@ def download_file_path(
     return root / f"course-{course_id}_file-{file_id}_{safe_filename(filename)}"
 
 
+def assignment_submission_download_dir(
+    root: Path, course_id: str, assignment_id: str
+) -> Path:
+    return root / (
+        f"course-{safe_filename(course_id)}_assignment-{safe_filename(assignment_id)}"
+    )
+
+
+def assignment_submission_download_path(
+    root: Path,
+    course_id: str,
+    assignment_id: str,
+    submission_id: str,
+    file_id: str,
+    filename: str,
+) -> Path:
+    assignment_dir = assignment_submission_download_dir(root, course_id, assignment_id)
+    return assignment_dir / (
+        f"submission-{safe_filename(submission_id)}_file-{safe_filename(file_id)}_"
+        f"{safe_filename(filename)}"
+    )
+
+
 @lru_cache(maxsize=1)
 def canvas_client():
     return create_canvas_client_from_env()

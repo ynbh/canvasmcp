@@ -233,6 +233,239 @@ class TestGetAssignmentRubricTool:
         ]
 
 
+class TestInstallAssignmentSubmissionFilesTool:
+    def test_requires_ids(self, mock_client):
+        from tools import install_assignment_submission_files
+
+        assert "error" in install_assignment_submission_files({"assignment_id": "42"})
+        assert "error" in install_assignment_submission_files({"course_id": "1"})
+
+    def test_no_submission_returns_message(self, mock_client):
+        mock_client.list_submissions.return_value = []
+        from tools import install_assignment_submission_files
+
+        result = install_assignment_submission_files(
+            {"course_id": "1", "assignment_id": "42"}
+        )
+
+        assert result["count"] == 0
+        assert "message" in result
+
+    def test_uses_raw_assignment_id_for_submission_lookup(self, mock_client):
+        mock_client.list_submissions.return_value = []
+        from tools import install_assignment_submission_files
+
+        install_assignment_submission_files(
+            {"course_id": "1398466", "assignment_id": "1398~7438508"}
+        )
+
+        mock_client.list_submissions.assert_called_once_with(
+            course_id="1398466",
+            student_id="self",
+            assignment_ids=["7438508"],
+            include=None,
+            grouped=False,
+            limit=1,
+        )
+
+    def test_course_submissions_uses_raw_assignment_ids(self, mock_client):
+        mock_client.list_submissions.return_value = []
+        from tools import list_course_submissions
+
+        list_course_submissions(
+            {
+                "course_id": "1398466",
+                "assignment_ids": ["1398~7438508", "13980000007438509"],
+            }
+        )
+
+        mock_client.list_submissions.assert_called_once()
+        assert mock_client.list_submissions.call_args.kwargs["assignment_ids"] == [
+            "7438508",
+            "7438509",
+        ]
+
+    def test_no_attachments_returns_message(self, mock_client):
+        mock_client.list_submissions.return_value = [{"id": 7, "attachments": []}]
+        from tools import install_assignment_submission_files
+
+        result = install_assignment_submission_files(
+            {"course_id": "1", "assignment_id": "42"}
+        )
+
+        assert result["submission_id"] == "7"
+        assert result["count"] == 0
+        assert "no attachment" in result["message"]
+
+    def test_downloads_attachment_with_file_id(self, mock_client, tmp_path):
+        mock_client.list_submissions.return_value = [
+            {"id": 7, "attachments": [{"id": 55, "display_name": "report.pdf"}]}
+        ]
+        mock_client.get_file.return_value = {
+            "id": 55,
+            "display_name": "report.pdf",
+            "content_type": "application/pdf",
+        }
+
+        def download_file(**kwargs):
+            path = kwargs["destination_path"]
+            with open(path, "wb") as handle:
+                handle.write(b"pdf")
+            return {"content_type": "application/pdf"}
+
+        mock_client.download_file.side_effect = download_file
+
+        with mock.patch("tools.submissions.download_dir", return_value=tmp_path):
+            from tools import install_assignment_submission_files
+
+            result = install_assignment_submission_files(
+                {"course_id": "1", "assignment_id": "42"}
+            )
+
+        assert result["downloaded_count"] == 1
+        assert result["already_present_count"] == 0
+        assert result["files"][0]["status"] == "downloaded"
+        assert result["files"][0]["size_bytes"] == 3
+        mock_client.download_file.assert_called_once()
+
+    def test_downloads_canvasapi_file_attachment_object(self, mock_client, tmp_path):
+        class Attachment:
+            def __init__(self):
+                self.id = 55
+                self.display_name = "report.pdf"
+                self.filename = "report.pdf"
+                self._requester = object()
+                self.updated_at_date = object()
+
+            def download(self, destination_path):
+                with open(destination_path, "wb") as handle:
+                    handle.write(b"pdf")
+
+        attachment = Attachment()
+        mock_client.list_submissions.return_value = [
+            {"id": 7, "attachments": [attachment]}
+        ]
+
+        with mock.patch("tools.submissions.download_dir", return_value=tmp_path):
+            from tools import install_assignment_submission_files
+
+            result = install_assignment_submission_files(
+                {"course_id": "1", "assignment_id": "42"}
+            )
+
+        assert result["downloaded_count"] == 1
+        assert result["files"][0]["file_id"] == "55"
+        mock_client.get_file.assert_not_called()
+        mock_client.download_file.assert_not_called()
+
+    def test_existing_file_is_already_present_without_force(self, mock_client, tmp_path):
+        mock_client.list_submissions.return_value = [
+            {"id": 7, "attachments": [{"id": 55, "display_name": "report.pdf"}]}
+        ]
+        mock_client.get_file.return_value = {
+            "id": 55,
+            "display_name": "report.pdf",
+            "content_type": "application/pdf",
+        }
+        target_dir = tmp_path / "course-1_assignment-42"
+        target_dir.mkdir()
+        target = target_dir / "submission-7_file-55_report.pdf"
+        target.write_bytes(b"cached")
+
+        with mock.patch("tools.submissions.download_dir", return_value=tmp_path):
+            from tools import install_assignment_submission_files
+
+            result = install_assignment_submission_files(
+                {"course_id": "1", "assignment_id": "42"}
+            )
+
+        assert result["already_present_count"] == 1
+        assert result["files"][0]["already_present"] is True
+        mock_client.download_file.assert_not_called()
+
+    def test_force_refresh_redownloads_existing_file(self, mock_client, tmp_path):
+        mock_client.list_submissions.return_value = [
+            {"id": 7, "attachments": [{"id": 55, "display_name": "report.pdf"}]}
+        ]
+        mock_client.get_file.return_value = {
+            "id": 55,
+            "display_name": "report.pdf",
+            "content_type": "application/pdf",
+        }
+        target_dir = tmp_path / "course-1_assignment-42"
+        target_dir.mkdir()
+        target = target_dir / "submission-7_file-55_report.pdf"
+        target.write_bytes(b"cached")
+
+        def download_file(**kwargs):
+            with open(kwargs["destination_path"], "wb") as handle:
+                handle.write(b"new")
+            return {"content_type": "application/pdf"}
+
+        mock_client.download_file.side_effect = download_file
+
+        with mock.patch("tools.submissions.download_dir", return_value=tmp_path):
+            from tools import install_assignment_submission_files
+
+            result = install_assignment_submission_files(
+                {"course_id": "1", "assignment_id": "42", "force_refresh": True}
+            )
+
+        assert result["downloaded_count"] == 1
+        assert target.read_bytes() == b"new"
+
+    def test_skips_attachment_without_file_id(self, mock_client, tmp_path):
+        attachment = {"display_name": "report.pdf", "url": "https://example.test/file"}
+        mock_client.list_submissions.return_value = [
+            {"id": 7, "attachments": [attachment]}
+        ]
+
+        with mock.patch("tools.submissions.download_dir", return_value=tmp_path):
+            from tools import install_assignment_submission_files
+
+            result = install_assignment_submission_files(
+                {"course_id": "1", "assignment_id": "42"}
+            )
+
+        assert result["skipped_count"] == 1
+        assert result["skipped"][0]["reason"] == "missing_file_id"
+        mock_client.download_file.assert_not_called()
+
+    def test_reports_download_errors_and_continues(self, mock_client, tmp_path):
+        mock_client.list_submissions.return_value = [
+            {
+                "id": 7,
+                "attachments": [
+                    {"id": 55, "display_name": "bad.pdf"},
+                    {"id": 56, "display_name": "good.pdf"},
+                ],
+            }
+        ]
+        mock_client.get_file.side_effect = [
+            {"id": 55, "display_name": "bad.pdf"},
+            {"id": 56, "display_name": "good.pdf"},
+        ]
+
+        def download_file(**kwargs):
+            if kwargs["file_id"] == "55":
+                raise RuntimeError("download failed")
+            with open(kwargs["destination_path"], "wb") as handle:
+                handle.write(b"ok")
+            return {"content_type": "application/pdf"}
+
+        mock_client.download_file.side_effect = download_file
+
+        with mock.patch("tools.submissions.download_dir", return_value=tmp_path):
+            from tools import install_assignment_submission_files
+
+            result = install_assignment_submission_files(
+                {"course_id": "1", "assignment_id": "42"}
+            )
+
+        assert result["downloaded_count"] == 1
+        assert result["error_count"] == 1
+        assert result["errors"][0]["file_id"] == "55"
+
 class TestListCourseFilesTool:
     """Tests for list_course_files tool handler."""
 

@@ -5,6 +5,8 @@ from typing import Annotated, Callable
 import typer
 
 assignments_app = typer.Typer(help="Assignment commands.")
+submissions_app = typer.Typer(help="Assignment submission commands.")
+assignments_app.add_typer(submissions_app, name="submissions")
 
 
 def register(invoke: Callable[[str, dict], None]) -> typer.Typer:
@@ -91,6 +93,23 @@ def register(invoke: Callable[[str, dict], None]) -> typer.Typer:
                 "include_assignments": include_assignments,
                 "include_submission": include_submission,
                 "limit": limit,
+            },
+        )
+
+    @submissions_app.command("install")
+    def assignments_submissions_install(
+        course_id: Annotated[str, typer.Argument(help="Canvas course ID.")],
+        assignment_id: Annotated[str, typer.Argument(help="Assignment ID.")],
+        force_refresh: Annotated[
+            bool, typer.Option(help="Redownload files even if local copies exist.")
+        ] = False,
+    ) -> None:
+        invoke(
+            "install_assignment_submission_files",
+            {
+                "course_id": course_id,
+                "assignment_id": assignment_id,
+                "force_refresh": force_refresh,
             },
         )
 
