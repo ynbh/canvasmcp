@@ -2,31 +2,66 @@ from __future__ import annotations
 
 from typing import Any
 
-from auth import CanvasAPIError
 from tools.common import (
     assignment_to_discussion_topic,
-    candidate_ids_for_lookup,
     canvas_client,
     clamp,
     count_discussion_entries,
-    extract_discussion_topic_id,
     first_non_none,
     id_aliases,
+    invalid_argument,
     is_announcement_topic,
-    is_forbidden_message,
-    is_not_found_message,
+    looks_like_canvas_id,
     map_discussion_entry,
+    missing_argument,
+    tool_error,
+    truncate_html,
 )
+from tools.resolvers import (
+    discussion_topic_context_error,
+    resolve_discussion_topic_context,
+)
+
+
+def _map_discussion_topic_item(
+    topic: dict[str, Any], *, course_id: str
+) -> dict[str, Any]:
+    return {
+        "id": str(topic.get("id", "")),
+        "id_aliases": id_aliases(str(topic.get("id", "")), course_id=course_id),
+        "title": topic.get("title", "Untitled discussion"),
+        "message": truncate_html(topic.get("message")),
+        "posted_at": topic.get("posted_at"),
+        "last_reply_at": topic.get("last_reply_at"),
+        "delayed_post_at": topic.get("delayed_post_at"),
+        "lock_at": topic.get("lock_at"),
+        "discussion_type": topic.get("discussion_type"),
+        "is_announcement": is_announcement_topic(topic),
+        "published": topic.get("published"),
+        "locked": topic.get("locked"),
+        "pinned": topic.get("pinned"),
+        "assignment_id": str(topic["assignment_id"])
+        if topic.get("assignment_id") is not None
+        else None,
+        "assignment_id_aliases": id_aliases(
+            str(topic["assignment_id"]), course_id=course_id
+        )
+        if topic.get("assignment_id") is not None
+        else [],
+        "points_possible": topic.get("points_possible"),
+        "html_url": topic.get("html_url"),
+        "source": topic.get("source", "discussion_topics_api"),
+    }
 
 
 def list_discussion_topics(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
     if not course_id:
-        return {"error": "course_id is required"}
+        return missing_argument("course_id")
 
     search_in = str(args.get("search_in", "title")).strip().lower()
     if search_in not in {"title", "title_or_message"}:
-        return {"error": "search_in must be 'title' or 'title_or_message'"}
+        return invalid_argument("search_in must be 'title' or 'title_or_message'")
 
     limit = clamp(args.get("limit"), 100)
     include_announcements = bool(args.get("include_announcements", False))
@@ -34,28 +69,36 @@ def list_discussion_topics(args: dict[str, Any]) -> dict[str, Any]:
     exact_title = bool(args.get("exact_title", False))
     search_value = str(args.get("search") or "").strip()
     scan_limit = 300
+    client = canvas_client()
 
-    api_topics = canvas_client().list_discussion_topics(
+    api_search = None if exact_title or looks_like_canvas_id(search_value) else search_value
+    api_topics = client.list_discussion_topics(
         course_id=course_id,
-        search=None,
+        search=api_search or None,
         only_graded=False,
         exact_title=False,
         include_announcements=True,
-        search_in="title",
+        search_in=search_in,
         limit=scan_limit,
     )
-    assignments = canvas_client().list_assignments(
-        course_id=course_id,
-        search=None,
-        include_submission=False,
-        include_discussion_topic=True,
-        limit=scan_limit,
-    )
-    assignment_topics = []
-    for assignment in assignments:
-        topic = assignment_to_discussion_topic(assignment)
-        if topic is not None:
-            assignment_topics.append(topic)
+
+    assignment_topics: list[dict[str, Any]] = []
+    needs_assignment_topics = only_graded or bool(search_value) or not api_topics
+    if needs_assignment_topics:
+        # ID/alias searches match against ids locally, so the API search_term
+        # (which only matches names) must not pre-filter assignments.
+        assignment_search = api_search or None
+        assignments = client.list_assignments(
+            course_id=course_id,
+            search=assignment_search,
+            include_submission=False,
+            include_discussion_topic=True,
+            limit=scan_limit,
+        )
+        for assignment in assignments:
+            topic = assignment_to_discussion_topic(assignment)
+            if topic is not None:
+                assignment_topics.append(topic)
 
     topic_by_id: dict[str, dict[str, Any]] = {}
     for topic in api_topics + assignment_topics:
@@ -77,7 +120,10 @@ def list_discussion_topics(args: dict[str, Any]) -> dict[str, Any]:
             topic_aliases = set(id_aliases(str(topic.get("id", "")), course_id=course_id))
             assignment_value = topic.get("assignment_id")
             assignment_aliases = set(
-                id_aliases(str(assignment_value) if assignment_value is not None else "", course_id=course_id)
+                id_aliases(
+                    str(assignment_value) if assignment_value is not None else "",
+                    course_id=course_id,
+                )
             )
             if query_aliases and query_aliases & (topic_aliases | assignment_aliases):
                 return True
@@ -93,32 +139,7 @@ def list_discussion_topics(args: dict[str, Any]) -> dict[str, Any]:
         topics = [topic for topic in topics if matches(topic)]
 
     items = [
-        {
-            "id": str(topic.get("id", "")),
-            "id_aliases": id_aliases(str(topic.get("id", "")), course_id=course_id),
-            "title": topic.get("title", "Untitled discussion"),
-            "message": topic.get("message"),
-            "posted_at": topic.get("posted_at"),
-            "last_reply_at": topic.get("last_reply_at"),
-            "delayed_post_at": topic.get("delayed_post_at"),
-            "lock_at": topic.get("lock_at"),
-            "discussion_type": topic.get("discussion_type"),
-            "is_announcement": is_announcement_topic(topic),
-            "published": topic.get("published"),
-            "locked": topic.get("locked"),
-            "pinned": topic.get("pinned"),
-            "assignment_id": str(topic["assignment_id"])
-            if topic.get("assignment_id") is not None
-            else None,
-            "assignment_id_aliases": id_aliases(
-                str(topic["assignment_id"]), course_id=course_id
-            )
-            if topic.get("assignment_id") is not None
-            else [],
-            "points_possible": topic.get("points_possible"),
-            "html_url": topic.get("html_url"),
-            "source": topic.get("source", "discussion_topics_api"),
-        }
+        _map_discussion_topic_item(topic, course_id=course_id)
         for topic in topics[:limit]
     ]
     return {
@@ -139,141 +160,32 @@ def get_discussion_entries(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
     topic_id = str(args.get("topic_id", "")).strip()
     if not course_id:
-        return {"error": "course_id is required"}
+        return missing_argument("course_id")
     if not topic_id:
-        return {"error": "topic_id is required"}
+        return missing_argument("topic_id")
 
     include_replies = bool(args.get("include_replies", True))
     include_participants = bool(args.get("include_participants", True))
     limit = clamp(args.get("limit"), 200)
 
-    topic_candidates = candidate_ids_for_lookup(topic_id, course_id=course_id)
-    resolved_topic: dict[str, Any] | None = None
-    try:
-        all_topics = canvas_client().list_discussion_topics(
-            course_id=course_id,
-            include_announcements=True,
-            limit=300,
+    context = resolve_discussion_topic_context(course_id, topic_id)
+
+    if context.view is None:
+        error = discussion_topic_context_error(
+            topic_id=topic_id,
+            context=context,
+            not_found_message=(
+                "Could not resolve a discussion topic from the provided id. "
+                "Try list_discussion_topics first and pass its topic id."
+            ),
         )
-    except CanvasAPIError as exc:
-        message = str(exc)
-        if is_forbidden_message(message):
-            return {
-                "error": "forbidden",
-                "message": message,
-                "hint": "Your Canvas role/token does not allow reading this discussion.",
-            }
-        return {"error": message}
+        if error is not None:
+            return error
+        context.view = {"view": [], "participants": []}
 
-    for topic in all_topics:
-        topic_aliases = id_aliases(str(topic.get("id", "")), course_id=course_id)
-        assignment_id = (
-            str(topic["assignment_id"])
-            if topic.get("assignment_id") is not None
-            else ""
-        )
-        assignment_aliases = id_aliases(assignment_id, course_id=course_id)
-        if any(
-            candidate in topic_aliases or candidate in assignment_aliases
-            for candidate in topic_candidates
-        ):
-            resolved_topic = topic
-            break
-
-    request_ids: list[str] = []
-    if resolved_topic and resolved_topic.get("id") is not None:
-        request_ids.extend(
-            candidate_ids_for_lookup(str(resolved_topic["id"]), course_id=course_id)
-        )
-    request_ids.extend(topic_candidates)
-
-    deduped_request_ids: list[str] = []
-    for candidate in request_ids:
-        if candidate and candidate not in deduped_request_ids:
-            deduped_request_ids.append(candidate)
-
-    assignment_linked_topic_id: str | None = None
-    for assignment_candidate in topic_candidates:
-        try:
-            assignment = canvas_client().get_assignment(
-                course_id=course_id,
-                assignment_id=assignment_candidate,
-                include_submission=False,
-                include_discussion_topic=True,
-            )
-        except CanvasAPIError:
-            continue
-        discussion_topic_id = extract_discussion_topic_id(assignment)
-        if discussion_topic_id:
-            assignment_linked_topic_id = discussion_topic_id
-            for candidate in candidate_ids_for_lookup(
-                discussion_topic_id, course_id=course_id
-            ):
-                if candidate not in deduped_request_ids:
-                    deduped_request_ids.insert(0, candidate)
-            if isinstance(assignment.get("discussion_topic"), dict):
-                resolved_topic = assignment.get("discussion_topic")
-            break
-
-    canonical_topic: dict[str, Any] | None = None
-    canonical_error: str | None = None
-    for candidate in deduped_request_ids:
-        try:
-            canonical_topic = canvas_client().get_discussion_topic(
-                course_id=course_id,
-                topic_id=candidate,
-            )
-            break
-        except CanvasAPIError as exc:
-            canonical_error = str(exc)
-
-    if canonical_topic and canonical_topic.get("id") is not None:
-        for candidate in candidate_ids_for_lookup(
-            str(canonical_topic.get("id")), course_id=course_id
-        ):
-            if candidate not in deduped_request_ids:
-                deduped_request_ids.insert(0, candidate)
-
-    view: dict[str, Any] | None = None
-    last_error: str | None = None
-    for candidate in deduped_request_ids:
-        try:
-            view = canvas_client().get_discussion_topic_view(
-                course_id=course_id,
-                topic_id=candidate,
-            )
-            break
-        except CanvasAPIError as exc:
-            last_error = str(exc)
-
-    if view is None:
-        if last_error and is_forbidden_message(last_error):
-            return {
-                "error": "forbidden",
-                "message": last_error,
-                "hint": "Your Canvas role/token does not allow reading this discussion.",
-            }
-        if last_error and is_not_found_message(last_error) and not canonical_topic:
-            return {"error": "not_found", "message": last_error, "topic_id": topic_id}
-        if canonical_topic:
-            view = {"view": [], "participants": []}
-        else:
-            if canonical_error and is_forbidden_message(canonical_error):
-                return {
-                    "error": "forbidden",
-                    "message": canonical_error,
-                    "hint": "Your Canvas role/token does not allow reading this discussion.",
-                }
-            if canonical_error and is_not_found_message(canonical_error):
-                return {"error": "not_found", "message": canonical_error, "topic_id": topic_id}
-            return {
-                "error": "not_found",
-                "message": (
-                    "Could not resolve a discussion topic from the provided id. "
-                    "Try list_discussion_topics first and pass its topic id."
-                ),
-                "topic_id": topic_id,
-            }
+    view = context.view
+    canonical_topic = context.canonical_topic
+    resolved_topic = context.resolved_topic
 
     topic_view_id = str(view.get("id", "")).strip()
     if not topic_view_id and isinstance(canonical_topic, dict):
@@ -281,14 +193,14 @@ def get_discussion_entries(args: dict[str, Any]) -> dict[str, Any]:
     if not topic_view_id and isinstance(resolved_topic, dict):
         topic_view_id = str(resolved_topic.get("id") or "").strip()
     if not topic_view_id:
-        return {
-            "error": "not_found",
-            "message": (
+        return tool_error(
+            "not_found",
+            (
                 "Canvas returned an empty discussion payload. "
                 "This usually means the id does not map to a discussion topic."
             ),
-            "topic_id": topic_id,
-        }
+            topic_id=topic_id,
+        )
 
     raw_entries = [
         entry for entry in (view.get("view") or []) if isinstance(entry, dict)
@@ -324,19 +236,23 @@ def get_discussion_entries(args: dict[str, Any]) -> dict[str, Any]:
         and resolved_topic is None
         and canonical_topic is None
     ):
-        return {
-            "error": "not_found",
-            "message": (
+        return tool_error(
+            "not_found",
+            (
                 "Canvas did not return a valid discussion payload for this id. "
                 "Pass a discussion topic id from list_discussion_topics."
             ),
-            "topic_id": topic_id,
-        }
+            topic_id=topic_id,
+        )
 
-    topic_message = first_non_none(
-        view.get("message"),
-        canonical_topic.get("message") if isinstance(canonical_topic, dict) else None,
-        resolved_topic.get("message") if isinstance(resolved_topic, dict) else None,
+    topic_message = truncate_html(
+        first_non_none(
+            view.get("message"),
+            canonical_topic.get("message")
+            if isinstance(canonical_topic, dict)
+            else None,
+            resolved_topic.get("message") if isinstance(resolved_topic, dict) else None,
+        )
     )
     topic_assignment_id = first_non_none(
         str(view["assignment_id"]) if view.get("assignment_id") is not None else None,
@@ -351,8 +267,12 @@ def get_discussion_entries(args: dict[str, Any]) -> dict[str, Any]:
     )
     topic_discussion_type = first_non_none(
         view.get("discussion_type"),
-        canonical_topic.get("discussion_type") if isinstance(canonical_topic, dict) else None,
-        resolved_topic.get("discussion_type") if isinstance(resolved_topic, dict) else None,
+        canonical_topic.get("discussion_type")
+        if isinstance(canonical_topic, dict)
+        else None,
+        resolved_topic.get("discussion_type")
+        if isinstance(resolved_topic, dict)
+        else None,
     )
     topic_html_url = first_non_none(
         view.get("html_url"),
@@ -363,8 +283,8 @@ def get_discussion_entries(args: dict[str, Any]) -> dict[str, Any]:
     return {
         "course_id": course_id,
         "requested_topic_id": topic_id,
-        "requested_topic_id_aliases": topic_candidates,
-        "assignment_linked_topic_id": assignment_linked_topic_id,
+        "requested_topic_id_aliases": context.topic_candidates,
+        "assignment_linked_topic_id": context.assignment_linked_topic_id,
         "resolved_topic_id": topic_view_id,
         "resolved_topic_id_aliases": id_aliases(topic_view_id, course_id=course_id),
         "topic": {

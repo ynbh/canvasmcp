@@ -273,7 +273,7 @@ class TestAuthPriority:
         cookies = ("session", "csrf")
         with (
             mock.patch("auth.resolve_canvas_base_url", return_value="https://umd.instructure.com"),
-            mock.patch("auth._read_chrome_cookies", return_value=cookies),
+            mock.patch("auth.read_chrome_session_cookies", return_value=cookies),
         ):
             from auth import ensure_canvas_auth_configured
 
@@ -283,7 +283,7 @@ class TestAuthPriority:
     def test_raises_when_no_chrome_cookies(self):
         with (
             mock.patch("auth.resolve_canvas_base_url", return_value="https://umd.instructure.com"),
-            mock.patch("auth._read_chrome_cookies", return_value=None),
+            mock.patch("auth.read_chrome_session_cookies", return_value=None),
         ):
             from auth import CanvasAPIError, ensure_canvas_auth_configured
 
@@ -340,7 +340,7 @@ class TestCreateCanvasClientFromEnv:
         cookies = ("session_val", "csrf_val")
         with (
             mock.patch("auth.resolve.resolve_canvas_base_url", return_value="https://umd.instructure.com"),
-            mock.patch("client._read_chrome_cookies", return_value=cookies),
+            mock.patch("client.read_chrome_session_cookies", return_value=cookies),
         ):
             from client import create_canvas_client_from_env
 
@@ -352,7 +352,7 @@ class TestCreateCanvasClientFromEnv:
     def test_raises_without_chrome_cookies(self):
         with (
             mock.patch("auth.resolve.resolve_canvas_base_url", return_value="https://umd.instructure.com"),
-            mock.patch("client._read_chrome_cookies", return_value=None),
+            mock.patch("client.read_chrome_session_cookies", return_value=None),
         ):
             from auth import CanvasAPIError
             from client import create_canvas_client_from_env

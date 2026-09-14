@@ -12,6 +12,7 @@ from cli.courses import course_app, register as register_courses
 from cli.discussions import discussion_app, register as register_discussions
 from cli.files import files_app, register as register_files
 from cli.misc import register as register_misc, tool_app as cli_tool_app
+from cli.scheduled import scheduled_app
 from cli.settings import settings_app
 from specs.registry import TOOL_SPECS, dispatch_tool_call
 
@@ -26,6 +27,7 @@ app.add_typer(discussion_app, name="discussion")
 app.add_typer(files_app, name="files")
 app.add_typer(cli_tool_app, name="tool")
 app.add_typer(settings_app, name="settings")
+app.add_typer(scheduled_app, name="scheduled")
 
 console = Console()
 TOOL_NAMES = sorted(spec.name for spec in TOOL_SPECS)
@@ -41,7 +43,13 @@ def _ensure_auth() -> None:
 
 def _print_result(result: dict[str, Any]) -> None:
     if "error" in result:
-        console.print(f"[bold red]Error:[/bold red] {result['error']}")
+        error = str(result["error"])
+        message = str(result.get("message") or "").strip()
+        detail = f"{error}: {message}" if message and message != error else error
+        console.print(f"[bold red]Error:[/bold red] {detail}")
+        hint = str(result.get("hint") or "").strip()
+        if hint:
+            console.print(f"[yellow]Hint:[/yellow] {hint}")
         raise typer.Exit(1)
     console.print_json(json.dumps(result, default=str))
 

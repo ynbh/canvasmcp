@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 from typing import Any
-from urllib.parse import urlparse
 
 import requests
 
@@ -10,7 +9,10 @@ from .chrome_cookies import read_chrome_cookies
 from .errors import missing_chrome_session_error
 from .profiles import resolve_chrome_profile_path, resolve_selected_chrome_profile
 from .resolve import resolve_canvas_base_url
-from .session import list_canvas_cookie_domains_for_profile
+from .session import (
+    apply_chrome_session_to_http_session,
+    list_canvas_cookie_domains_for_profile,
+)
 from .urls import canvas_root_url, normalize_canvas_api_base_url
 
 
@@ -68,17 +70,16 @@ def get_auth_status(
     session_cookie, csrf_token = cookies
     session = requests.Session()
     try:
-        domain = urlparse(resolved_base_url).hostname or ""
-        session.cookies.set("canvas_session", session_cookie, domain=domain)
-        session.cookies.set("_csrf_token", csrf_token, domain=domain)
-        session.headers.update(
-            {
+        apply_chrome_session_to_http_session(
+            session,
+            base_url=resolved_base_url,
+            cookies=(session_cookie, csrf_token),
+            headers={
                 "Accept": "application/json, text/plain, */*",
                 "User-Agent": "canvasmcp-auth-probe",
-                "X-CSRF-Token": csrf_token,
                 "X-Requested-With": "XMLHttpRequest",
                 "Referer": root_url,
-            }
+            },
         )
         response = session.get(
             status["probe_url"],

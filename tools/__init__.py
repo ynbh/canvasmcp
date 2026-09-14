@@ -34,9 +34,18 @@ from tools.submissions import (
     install_assignment_submission_files,
     list_course_submissions,
 )
+from tools.submit import (
+    cancel_scheduled_submission,
+    confirm_assignment_submission,
+    get_scheduled_submission,
+    list_scheduled_submissions,
+    preview_assignment_submission,
+)
 
 __all__ = [
+    "cancel_scheduled_submission",
     "canvas_get_page",
+    "confirm_assignment_submission",
     "download_course_file",
     "get_assignment_details",
     "get_assignment_rubric",
@@ -46,6 +55,7 @@ __all__ = [
     "get_course_syllabus",
     "get_course_tab",
     "get_discussion_entries",
+    "get_scheduled_submission",
     "get_today",
     "install_assignment_submission_files",
     "list_announcements",
@@ -60,7 +70,9 @@ __all__ = [
     "list_courses",
     "list_discussion_topics",
     "list_modules",
+    "list_scheduled_submissions",
     "list_todo_items",
+    "preview_assignment_submission",
     "resolve_canvas_url",
     "resolve_course",
 ]

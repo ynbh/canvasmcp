@@ -5,15 +5,14 @@ from typing import Any
 
 from auth import CanvasAPIError
 from tools.common import (
-    candidate_ids_for_lookup,
     canvas_client,
     clamp,
-    expand_canvas_id,
-    id_aliases,
-    parse_canvas_course_resource,
+    missing_argument,
     parse_canvas_url_path,
-    recommended_tool_for_resource,
+    tool_error,
+    truncate_html,
 )
+from tools.resolvers import resolve_canvas_url
 
 
 def get_today(_: dict[str, Any]) -> dict[str, Any]:
@@ -24,24 +23,24 @@ def canvas_get_page(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
     url_or_id = str(args.get("url_or_id", "")).strip()
     if not course_id:
-        return {"error": "course_id is required"}
+        return missing_argument("course_id")
     if not url_or_id:
-        return {"error": "url_or_id is required"}
+        return missing_argument("url_or_id")
 
     if "://" in url_or_id:
         _, _, parts = parse_canvas_url_path(url_or_id)
         if len(parts) >= 4 and parts[0] == "courses":
             section = parts[2]
             if section != "pages":
-                return {
-                    "error": "unsupported_url_pattern",
-                    "message": (
+                return tool_error(
+                    "unsupported_url_pattern",
+                    (
                         "canvas_get_page only supports course wiki page URLs. "
                         "Use resolve_canvas_url to route assignment/discussion/file URLs."
                     ),
-                    "url": url_or_id,
-                    "suggested_tool": "resolve_canvas_url",
-                }
+                    url=url_or_id,
+                    suggested_tool="resolve_canvas_url",
+                )
             url_or_id = parts[3]
 
     page = canvas_client().get_page(
@@ -83,7 +82,7 @@ def list_announcements(args: dict[str, Any]) -> dict[str, Any]:
         str(course_id).strip() for course_id in raw_course_ids if str(course_id).strip()
     ]
     if not course_ids:
-        return {"error": "course_ids is required"}
+        return missing_argument("course_ids")
 
     limit = clamp(args.get("limit"), 100)
     announcements = canvas_client().list_announcements(
@@ -100,7 +99,7 @@ def list_announcements(args: dict[str, Any]) -> dict[str, Any]:
             "posted_at": item.get("posted_at"),
             "context_code": item.get("context_code"),
             "html_url": item.get("html_url"),
-            "message": item.get("message"),
+            "message": truncate_html(item.get("message")),
         }
         for item in announcements
     ]
@@ -144,182 +143,10 @@ def _map_todo_assignment(assignment: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def resolve_canvas_resource_details(
-    *,
-    course_id: str,
-    resource_type: str,
-    resource_id: str | None,
-    resource_id_raw: str | None,
-) -> dict[str, Any] | None:
-    from tools.assignments import (
-        get_assignment_details,
-    )
-    from tools.courses import (
-        get_course_overview,
-        get_course_syllabus,
-        list_course_pages,
-        list_course_people,
-    )
-    from tools.discussions import get_discussion_entries, list_discussion_topics
-    from tools.grades import get_course_grade_summary
-    from tools.submissions import list_course_submissions
-
-    if resource_type == "course":
-        return get_course_overview({"course_id": course_id})
-    if resource_type == "front_page":
-        page = canvas_client().get_front_page(course_id=course_id)
-        return {
-            "course_id": course_id,
-            "page": {
-                "page_id": str(page.get("page_id", "")),
-                "url": page.get("url"),
-                "title": page.get("title"),
-                "html_url": page.get("html_url"),
-                "body": page.get("body"),
-            },
-        }
-    if resource_type == "syllabus":
-        return get_course_syllabus({"course_id": course_id, "include_body": True})
-    if resource_type == "course_grades":
-        return get_course_grade_summary({"course_id": course_id})
-    if resource_type == "course_people":
-        return list_course_people({"course_id": course_id, "limit": 100})
-    if resource_type == "discussion_topics_index":
-        return list_discussion_topics({"course_id": course_id, "limit": 100})
-    if resource_type == "pages_index":
-        return list_course_pages({"course_id": course_id, "limit": 100})
-    if resource_type == "assignment" and resource_id:
-        for candidate in candidate_ids_for_lookup(resource_id, course_id=course_id):
-            try:
-                assignment = canvas_client().get_assignment(
-                    course_id=course_id,
-                    assignment_id=candidate,
-                    include_submission=False,
-                    include_discussion_topic=False,
-                )
-                return {
-                    "course_id": course_id,
-                    "assignment": {
-                        "id": str(assignment.get("id", "")),
-                        "name": assignment.get("name"),
-                        "due_at": assignment.get("due_at"),
-                        "points_possible": assignment.get("points_possible"),
-                        "html_url": assignment.get("html_url"),
-                    },
-                }
-            except CanvasAPIError:
-                continue
-        return None
-    if resource_type == "discussion_topic" and resource_id:
-        for candidate in candidate_ids_for_lookup(resource_id, course_id=course_id):
-            try:
-                view = canvas_client().get_discussion_topic_view(
-                    course_id=course_id,
-                    topic_id=candidate,
-                )
-                return {
-                    "course_id": course_id,
-                    "topic": {
-                        "id": str(view.get("id", "")),
-                        "title": view.get("title"),
-                        "html_url": view.get("html_url"),
-                    },
-                }
-            except CanvasAPIError:
-                continue
-        return None
-    if resource_type == "page" and resource_id_raw:
-        page = canvas_client().get_page(
-            course_id=course_id,
-            url_or_id=resource_id_raw,
-            force_as_id=False,
-        )
-        return {
-            "course_id": course_id,
-            "page": {
-                "page_id": str(page.get("page_id", "")),
-                "url": page.get("url"),
-                "title": page.get("title"),
-                "html_url": page.get("html_url"),
-            },
-        }
-    if resource_type == "file" and resource_id:
-        for candidate in candidate_ids_for_lookup(resource_id, course_id=course_id):
-            try:
-                file_info = canvas_client().get_file(
-                    course_id=course_id,
-                    file_id=candidate,
-                )
-                return {
-                    "course_id": course_id,
-                    "file": {
-                        "id": str(file_info.get("id", "")),
-                        "display_name": file_info.get("display_name"),
-                        "filename": file_info.get("filename"),
-                        "size": file_info.get("size"),
-                        "url": file_info.get("url"),
-                    },
-                }
-            except CanvasAPIError:
-                continue
-        return None
-    if resource_type == "assignment_submission":
-        return list_course_submissions({"course_id": course_id, "limit": 200})
-    if resource_type == "discussion_topic":
-        return get_discussion_entries({"course_id": course_id, "topic_id": resource_id or ""})
-    if resource_type == "assignment":
-        return get_assignment_details({"course_id": course_id, "assignment_id": resource_id or ""})
-    return None
-
-
-def resolve_canvas_url(args: dict[str, Any]) -> dict[str, Any]:
-    url = str(args.get("url", "")).strip()
-    if not url:
-        return {"error": "url is required"}
-
-    parsed, path, parts = parse_canvas_url_path(url)
-    course_id_raw, resource_type, resource_id_raw = parse_canvas_course_resource(parts)
-    course_id = str(course_id_raw).strip() if course_id_raw else None
-    resource_id = (
-        expand_canvas_id(resource_id_raw, course_id=course_id) if resource_id_raw else None
-    )
-    recommended_tool = recommended_tool_for_resource(resource_type)
-
-    fetch_details = bool(args.get("fetch_details", True))
-    details: dict[str, Any] | None = None
-    detail_error: str | None = None
-    if fetch_details and course_id and resource_type:
-        try:
-            details = resolve_canvas_resource_details(
-                course_id=course_id,
-                resource_type=resource_type,
-                resource_id=resource_id,
-                resource_id_raw=resource_id_raw,
-            )
-        except CanvasAPIError as exc:
-            detail_error = str(exc)
-
-    return {
-        "url": url,
-        "domain": parsed.netloc,
-        "path": path,
-        "course_id_raw": course_id_raw,
-        "course_id": course_id,
-        "course_id_aliases": id_aliases(course_id_raw or "", course_id=course_id),
-        "resource_type": resource_type,
-        "resource_id_raw": resource_id_raw,
-        "resource_id": resource_id,
-        "resource_id_aliases": id_aliases(resource_id_raw or "", course_id=course_id),
-        "recommended_tool": recommended_tool,
-        "details": details,
-        "detail_error": detail_error,
-    }
-
-
 def get_course_context_snapshot(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
     if not course_id:
-        return {"error": "course_id is required"}
+        return missing_argument("course_id")
 
     include_syllabus_body = bool(args.get("include_syllabus_body", False))
     upcoming_limit = clamp(args.get("upcoming_limit"), 20)

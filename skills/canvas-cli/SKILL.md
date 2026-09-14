@@ -1,6 +1,6 @@
 ---
 name: canvas-cli
-description: Use the local `canvas` CLI for Canvas LMS workflows. Trigger when you need to find a course, inspect modules/assignments/discussions/files/pages/people/grades/rubrics, or verify Canvas session status from the terminal.
+description: Use the local `canvas` CLI for Canvas LMS workflows. Trigger when you need to find a course, inspect modules/assignments/discussions/files/pages/people/grades/rubrics, submit or schedule an assignment, or verify Canvas session status from the terminal.
 ---
 
 # Canvas CLI Agent Instructions
@@ -18,6 +18,7 @@ Run commands with the installed `canvas` executable. Prefer first-class `canvas`
 - If no matching Canvas object is found, say that directly and mention the search term/course checked.
 - If auth fails, run the auth recovery workflow before treating it as a code issue.
 - Treat quiz support as read-only.
+- For assignment submit: preview first, show the preview to the user, wait for explicit approval, then confirm. Never call `canvas scheduled fire`.
 
 ## Auth
 
@@ -68,6 +69,36 @@ Best practice:
 - Search assignments by keyword before fetching details when the assignment ID is unknown.
 - Use `assignments show` for instructions, due dates, submission settings, discussion links, and attached rubric fields.
 - Use assignment aliases only as lookup aids; report canonical assignment IDs in final answers.
+
+## Submit Assignments
+
+```bash
+canvas assignments submissions preview <course_id> <assignment_id> \
+  --type online_upload --file ./essay.pdf \
+  --at 2026-09-10T23:57:00-04:00
+
+canvas assignments submissions preview <course_id> <assignment_id> \
+  --type online_text_entry --body "..." --minutes-before-due 2
+
+canvas assignments submissions preview <course_id> <assignment_id> \
+  --type online_upload --file a.pdf --file b.txt --now
+
+canvas assignments submissions confirm <preview_token>
+canvas assignments submissions confirm <preview_token> --override --caffeinate
+canvas assignments submissions scheduled
+canvas assignments submissions status <job_id>
+canvas assignments submissions cancel <job_id>
+```
+
+Best practice:
+
+- Always call `preview` first. It does not upload, submit, or install launchd.
+- Show the user the preview: assignment name, submit time or `--now`, files/body, current attempt, `warnings`, and `requires_override`. Wait for explicit approval before `confirm`.
+- `--now` still uses the same preview → confirm gate. Confirm submits immediately and does not create a LaunchAgent.
+- v1 types only: `online_upload` and `online_text_entry`.
+- If `requires_override` is true, tell the user a pending job exists and only confirm with `--override` if they agree to replace it.
+- Scheduled confirm (not `--now`) prints a sleep warning. Repeat it: sleep, shutdown, or crash means it will not submit. They can ignore the warning if they know the machine will stay on. `--caffeinate` on confirm keeps the Mac awake until fire finishes.
+- Never call `canvas scheduled fire`. That is launchd-only.
 
 ## Rubrics
 
