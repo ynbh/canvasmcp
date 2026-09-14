@@ -1,17 +1,22 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Annotated, Any
 
 import typer
-from rich.console import Console
 
 from auth import CanvasAPIError, ensure_canvas_auth_configured, get_auth_status
-from cli.assignments import assignments_app, register as register_assignments
-from cli.courses import course_app, register as register_courses
-from cli.discussions import discussion_app, register as register_discussions
-from cli.files import files_app, register as register_files
-from cli.misc import register as register_misc, tool_app as cli_tool_app
+from cli.assignments import assignments_app
+from cli.assignments import register as register_assignments
+from cli.courses import course_app
+from cli.courses import register as register_courses
+from cli.discussions import discussion_app
+from cli.discussions import register as register_discussions
+from cli.files import files_app
+from cli.files import register as register_files
+from cli.misc import register as register_misc
+from cli.misc import tool_app as cli_tool_app
+from cli.output import OutputMode, emit, fail
 from cli.scheduled import scheduled_app
 from cli.settings import settings_app
 from specs.registry import TOOL_SPECS, dispatch_tool_call
@@ -29,39 +34,38 @@ app.add_typer(cli_tool_app, name="tool")
 app.add_typer(settings_app, name="settings")
 app.add_typer(scheduled_app, name="scheduled")
 
-console = Console()
 TOOL_NAMES = sorted(spec.name for spec in TOOL_SPECS)
+
+
+@app.callback()
+def configure_output(
+    ctx: typer.Context,
+    output: Annotated[
+        OutputMode,
+        typer.Option(
+            "--output",
+            envvar="CANVAS_OUTPUT",
+            help="Result format. Auto uses pretty for terminal stdout and JSON otherwise.",
+        ),
+    ] = OutputMode.auto,
+) -> None:
+    ctx.meta["output"] = output
 
 
 def _ensure_auth() -> None:
     try:
         ensure_canvas_auth_configured()
     except CanvasAPIError as exc:
-        console.print(f"[bold red]Error:[/bold red] {exc}")
-        raise typer.Exit(1) from exc
-
-
-def _print_result(result: dict[str, Any]) -> None:
-    if "error" in result:
-        error = str(result["error"])
-        message = str(result.get("message") or "").strip()
-        detail = f"{error}: {message}" if message and message != error else error
-        console.print(f"[bold red]Error:[/bold red] {detail}")
-        hint = str(result.get("hint") or "").strip()
-        if hint:
-            console.print(f"[yellow]Hint:[/yellow] {hint}")
-        raise typer.Exit(1)
-    console.print_json(json.dumps(result, default=str))
+        fail("auth_error", str(exc))
 
 
 def _invoke(tool_name: str, args: dict[str, Any] | None = None) -> None:
     if tool_name != "get_today":
         _ensure_auth()
     try:
-        _print_result(dispatch_tool_call(tool_name, args or {}))
+        emit(dispatch_tool_call(tool_name, args or {}), tool_name=tool_name)
     except CanvasAPIError as exc:
-        console.print(f"[bold red]Error:[/bold red] {exc}")
-        raise typer.Exit(1) from exc
+        fail("canvas_api_error", str(exc))
 
 
 def _parse_json(value: str | None, *, flag_name: str) -> Any:
@@ -70,8 +74,7 @@ def _parse_json(value: str | None, *, flag_name: str) -> Any:
     try:
         return json.loads(value)
     except json.JSONDecodeError as exc:
-        console.print(f"[bold red]Invalid JSON for {flag_name}:[/bold red] {exc}")
-        raise typer.Exit(2) from exc
+        fail("invalid_json", f"Invalid JSON for {flag_name}: {exc}", exit_code=2)
 
 
 register_courses(_invoke)

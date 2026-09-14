@@ -476,7 +476,7 @@ class TestGeneratedCli:
         ):
             result = runner.invoke(cli.app, ["auth-status"])
         assert result.exit_code == 0
-        assert '"auth_mode": null' in result.stdout
+        assert json.loads(result.stdout)["auth_mode"] is None
         assert "No usable Canvas session" in result.stdout
 
     def test_auth_status_catches_canvas_api_error_and_returns_json(self):
@@ -492,7 +492,7 @@ class TestGeneratedCli:
         ):
             result = runner.invoke(cli.app, ["auth-status"])
         assert result.exit_code == 0
-        assert '"auth_status": "error"' in result.stdout
+        assert json.loads(result.stdout)["auth_status"] == "error"
         assert "Could not infer a Canvas site from Chrome" in result.stdout
         assert "Traceback" not in result.stdout
 
@@ -536,7 +536,7 @@ class TestGeneratedCli:
         ):
             result = runner.invoke(cli.app, ["settings", "show"])
         assert result.exit_code == 0
-        assert '"auth_status": "error"' in result.stdout
+        assert json.loads(result.stdout)["auth"]["auth_status"] == "error"
         assert "Could not infer a Canvas site from Chrome" in result.stdout
         assert "Traceback" not in result.stdout
 
@@ -598,7 +598,9 @@ class TestGeneratedCli:
         ):
             result = runner.invoke(cli.app, ["courses"])
         assert result.exit_code == 1
-        assert "Error: Open Canvas in Chrome and retry" in result.stdout
+        assert json.loads(result.stdout) == {
+            "error": "auth_error", "message": "Open Canvas in Chrome and retry"
+        }
         assert "Traceback" not in result.stdout
 
 

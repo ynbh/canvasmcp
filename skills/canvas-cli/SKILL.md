@@ -13,6 +13,7 @@ Run commands with the installed `canvas` executable. Prefer first-class `canvas`
 - Use the narrowest first-class CLI command that answers the request.
 - Use `canvas tool run` only when no first-class subcommand exists, for debugging, or to mirror MCP tool behavior.
 - Preserve user privacy: never print cookie values, CSRF tokens, access tokens, or raw auth headers.
+- Set `CANVAS_OUTPUT=json` for agent invocations, or pass `canvas --output json ...` before the subcommand, including when using a PTY.
 - Summarize JSON output for the user. Do not paste large raw JSON unless requested.
 - Include exact IDs when they help the user follow up: `course_id`, `assignment_id`, `topic_id`, `file_id`.
 - If no matching Canvas object is found, say that directly and mention the search term/course checked.

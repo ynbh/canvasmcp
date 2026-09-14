@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-import json
-from typing import Annotated, Callable
+from collections.abc import Callable
+from typing import Annotated
 
 import typer
-from rich.console import Console
 
 from auth import CanvasAPIError
+from cli.output import emit, fail
 
-console = Console()
 tool_app = typer.Typer(help="Low-level tool access.")
 
 
@@ -39,12 +38,16 @@ def register(
     def list_courses(
         all_courses: Annotated[
             bool,
-            typer.Option("--all", help="Include active enrollments instead of favorites only."),
+            typer.Option(
+                "--all", help="Include active enrollments instead of favorites only."
+            ),
         ] = False,
         search: Annotated[
             str | None, typer.Option(help="Filter by course name/code.")
         ] = None,
-        limit: Annotated[int, typer.Option(help="Maximum number of courses to return.")] = 50,
+        limit: Annotated[
+            int, typer.Option(help="Maximum number of courses to return.")
+        ] = 50,
     ) -> None:
         invoke(
             "list_courses",
@@ -124,11 +127,11 @@ def register(
 
     @app.command("auth-status")
     def auth_status() -> None:
-        console.print_json(json.dumps(_safe_auth_status(), default=str))
+        emit(_safe_auth_status(), tool_name="auth_status", failures=False)
 
     @tool_app.command("list")
     def tool_list() -> None:
-        console.print_json(json.dumps({"tools": tool_names}))
+        emit({"tools": tool_names}, tool_name="tool_list", machine_default=True)
 
     @tool_app.command("run")
     def tool_run(
@@ -142,13 +145,14 @@ def register(
         ] = "{}",
     ) -> None:
         if name not in tool_names:
-            console.print(f"[bold red]Unknown tool:[/bold red] {name}")
-            console.print(f"Available tools: {', '.join(tool_names)}")
-            raise typer.Exit(2)
+            fail("unknown_tool", f"Unknown tool: {name}", exit_code=2, tools=tool_names)
         parsed_args = parse_json(args)
         if not isinstance(parsed_args, dict):
-            console.print("[bold red]Invalid JSON for --args:[/bold red] expected an object")
-            raise typer.Exit(2)
+            fail(
+                "invalid_json",
+                "Invalid JSON for --args: expected an object",
+                exit_code=2,
+            )
         invoke(name, parsed_args)
 
     return tool_app

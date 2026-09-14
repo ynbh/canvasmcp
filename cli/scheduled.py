@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-import json
-
 import typer
-from rich.console import Console
 
-console = Console()
+from cli.output import emit
 
 scheduled_app = typer.Typer(
     name="scheduled",
@@ -22,6 +19,4 @@ def scheduled_fire(
     from schedule.fire import fire_job
 
     result = fire_job(job_id)
-    console.print_json(json.dumps(result, default=str))
-    if isinstance(result, dict) and result.get("error"):
-        raise typer.Exit(1)
+    emit(result, tool_name="scheduled_fire", machine_default=True)
