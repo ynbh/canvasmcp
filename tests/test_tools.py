@@ -876,8 +876,8 @@ class TestDispatchToolCall:
         from specs.registry import dispatch_tool_call
 
         result = dispatch_tool_call("nonexistent_tool")
-        assert "error" in result
-        assert "Unknown tool" in result["error"]
+        assert result["error"] == "unknown_tool"
+        assert "Unknown tool" in result["message"]
 
     def test_dispatches_get_today(self):
         from specs.registry import dispatch_tool_call

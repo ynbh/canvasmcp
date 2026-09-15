@@ -17,6 +17,10 @@ dist/
 .env
 .env.*
 
+# Local implementation notes
+plans/
+UJs.md
+
 # IDEs and OS files
 .idea/
 .DS_Store

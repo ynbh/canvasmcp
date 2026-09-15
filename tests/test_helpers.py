@@ -179,6 +179,20 @@ class TestHelperFunctions:
         assert _is_not_found_message("could not find resource") is True
         assert _is_not_found_message("success") is False
 
+    def test_is_forbidden_error_uses_status_code(self):
+        from auth import CanvasAPIError
+        from tools.common import is_forbidden_error
+
+        assert is_forbidden_error(CanvasAPIError("denied", status_code=403)) is True
+        assert is_forbidden_error(CanvasAPIError("missing", status_code=404)) is False
+
+    def test_is_not_found_error_uses_status_code(self):
+        from auth import CanvasAPIError
+        from tools.common import is_not_found_error
+
+        assert is_not_found_error(CanvasAPIError("missing", status_code=404)) is True
+        assert is_not_found_error(CanvasAPIError("denied", status_code=403)) is False
+
     def test_first_non_none(self):
         from tools.common import first_non_none as _first_non_none
 

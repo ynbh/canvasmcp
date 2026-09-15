@@ -6,13 +6,17 @@ from auth import CanvasAPIError
 from tools.common import (
     assignment_submission_download_dir,
     assignment_submission_download_path,
+    canvas_api_tool_error,
     canvas_client,
     clamp,
     download_dir,
     expand_canvas_id,
     id_aliases,
-    is_forbidden_message,
+    invalid_argument,
+    is_forbidden_error,
+    missing_argument,
     short_canvas_id,
+    tool_error,
 )
 
 
@@ -42,20 +46,20 @@ def _attachment_content_type(
 def list_course_submissions(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
     if not course_id:
-        return {"error": "course_id is required"}
+        return missing_argument("course_id")
 
     include_raw = args.get("include")
     include: list[str] | None = None
     if include_raw is not None:
         if not isinstance(include_raw, list):
-            return {"error": "include must be an array of strings"}
+            return invalid_argument("include must be an array of strings")
         include = [str(item).strip() for item in include_raw if str(item).strip()]
 
     assignment_ids_raw = args.get("assignment_ids")
     assignment_ids: list[str] | None = None
     if assignment_ids_raw is not None:
         if not isinstance(assignment_ids_raw, list):
-            return {"error": "assignment_ids must be an array of strings"}
+            return invalid_argument("assignment_ids must be an array of strings")
         assignment_ids = []
         for item in assignment_ids_raw:
             canvas_id = short_canvas_id(str(item))
@@ -64,6 +68,7 @@ def list_course_submissions(args: dict[str, Any]) -> dict[str, Any]:
 
     student_id = str(args.get("student_id", "self")).strip() or "self"
     limit = clamp(args.get("limit"), 200)
+    include_raw_submission = bool(args.get("include_raw_submission", False))
     try:
         submissions = canvas_client().list_submissions(
             course_id=course_id,
@@ -83,19 +88,18 @@ def list_course_submissions(args: dict[str, Any]) -> dict[str, Any]:
             limit=limit,
         )
     except CanvasAPIError as exc:
-        message = str(exc)
-        if is_forbidden_message(message):
-            return {
-                "error": "forbidden",
-                "message": message,
-                "hint": (
+        if is_forbidden_error(exc):
+            return tool_error(
+                "forbidden",
+                str(exc),
+                hint=(
                     "To read submissions for non-self users, your Canvas token must "
                     "have submission read access and your role must permit viewing "
                     "other students in this course."
                 ),
-                "requested_student_id": student_id,
-            }
-        return {"error": message}
+                requested_student_id=student_id,
+            )
+        return canvas_api_tool_error(exc)
 
     flattened_submissions: list[dict[str, Any]] = []
     grouped_shell_count = 0
@@ -125,68 +129,68 @@ def list_course_submissions(args: dict[str, Any]) -> dict[str, Any]:
 
     submissions = flattened_submissions
     if not submissions and grouped_shell_count > 0:
-        return {
-            "error": "access_limited",
-            "message": (
+        return tool_error(
+            "access_limited",
+            (
                 "Canvas returned grouped submission shells without assignment data. "
                 "This integration token/role likely lacks course-wide submissions feed access."
             ),
-            "hint": (
+            hint=(
                 "Use get_assignment_details(include_submission=true) for specific "
                 "assignments, or update Canvas token scopes/role permissions."
             ),
-            "requested_student_id": student_id,
-        }
+            requested_student_id=student_id,
+        )
 
     items = []
     for submission in submissions:
         assignment = submission.get("assignment")
-        items.append(
-            {
-                "id": str(submission.get("id", "")),
-                "assignment_id": str(submission["assignment_id"])
-                if submission.get("assignment_id") is not None
-                else None,
-                "assignment_id_aliases": id_aliases(
-                    str(submission["assignment_id"]), course_id=course_id
-                )
-                if submission.get("assignment_id") is not None
-                else [],
-                "assignment_name": assignment.get("name")
-                if isinstance(assignment, dict)
-                else None,
-                "user_id": str(submission["user_id"])
-                if submission.get("user_id") is not None
-                else None,
-                "score": submission.get("score"),
-                "grade": submission.get("grade"),
-                "entered_score": submission.get("entered_score"),
-                "entered_grade": submission.get("entered_grade"),
-                "submitted_at": submission.get("submitted_at"),
-                "graded_at": submission.get("graded_at"),
-                "late": submission.get("late"),
-                "missing": submission.get("missing"),
-                "excused": submission.get("excused"),
-                "workflow_state": submission.get("workflow_state"),
-                "submission_type": submission.get("submission_type"),
-                "attempt": submission.get("attempt"),
-                "seconds_late": submission.get("seconds_late"),
-                "assignment": assignment if isinstance(assignment, dict) else None,
-                "url": submission.get("url"),
-                "body": submission.get("body"),
-                "preview_url": submission.get("preview_url"),
-                "attachments": submission.get("attachments") or [],
-                "submission_comments": submission.get("submission_comments") or [],
-                "submission_history": submission.get("submission_history") or [],
-                "rubric_assessment": submission.get("rubric_assessment"),
-                "media_comment": submission.get("media_comment"),
-                "group": submission.get("group"),
-                "user": submission.get("user"),
-                "discussion_entries": submission.get("discussion_entries") or [],
-                "content": submission.get("body") or submission.get("url"),
-                "raw_submission": submission,
-            }
-        )
+        item = {
+            "id": str(submission.get("id", "")),
+            "assignment_id": str(submission["assignment_id"])
+            if submission.get("assignment_id") is not None
+            else None,
+            "assignment_id_aliases": id_aliases(
+                str(submission["assignment_id"]), course_id=course_id
+            )
+            if submission.get("assignment_id") is not None
+            else [],
+            "assignment_name": assignment.get("name")
+            if isinstance(assignment, dict)
+            else None,
+            "user_id": str(submission["user_id"])
+            if submission.get("user_id") is not None
+            else None,
+            "score": submission.get("score"),
+            "grade": submission.get("grade"),
+            "entered_score": submission.get("entered_score"),
+            "entered_grade": submission.get("entered_grade"),
+            "submitted_at": submission.get("submitted_at"),
+            "graded_at": submission.get("graded_at"),
+            "late": submission.get("late"),
+            "missing": submission.get("missing"),
+            "excused": submission.get("excused"),
+            "workflow_state": submission.get("workflow_state"),
+            "submission_type": submission.get("submission_type"),
+            "attempt": submission.get("attempt"),
+            "seconds_late": submission.get("seconds_late"),
+            "assignment": assignment if isinstance(assignment, dict) else None,
+            "url": submission.get("url"),
+            "body": submission.get("body"),
+            "preview_url": submission.get("preview_url"),
+            "attachments": submission.get("attachments") or [],
+            "submission_comments": submission.get("submission_comments") or [],
+            "submission_history": submission.get("submission_history") or [],
+            "rubric_assessment": submission.get("rubric_assessment"),
+            "media_comment": submission.get("media_comment"),
+            "group": submission.get("group"),
+            "user": submission.get("user"),
+            "discussion_entries": submission.get("discussion_entries") or [],
+            "content": submission.get("body") or submission.get("url"),
+        }
+        if include_raw_submission:
+            item["raw_submission"] = submission
+        items.append(item)
 
     response: dict[str, Any] = {
         "course_id": course_id,
@@ -209,9 +213,9 @@ def install_assignment_submission_files(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
     assignment_id = str(args.get("assignment_id", "")).strip()
     if not course_id:
-        return {"error": "course_id is required"}
+        return missing_argument("course_id")
     if not assignment_id:
-        return {"error": "assignment_id is required"}
+        return missing_argument("assignment_id")
 
     api_assignment_id = short_canvas_id(assignment_id)
     canonical_assignment_id = expand_canvas_id(api_assignment_id, course_id=course_id)
@@ -228,7 +232,7 @@ def install_assignment_submission_files(args: dict[str, Any]) -> dict[str, Any]:
             limit=1,
         )
     except CanvasAPIError as exc:
-        return {"error": str(exc)}
+        return canvas_api_tool_error(exc)
 
     root = download_dir()
     assignment_dir = assignment_submission_download_dir(

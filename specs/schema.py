@@ -22,7 +22,11 @@ def tool_spec(
     properties: dict[str, Any] | None = None,
     required: list[str] | None = None,
 ) -> ToolSpec:
-    parameters: dict[str, Any] = {"type": "object", "properties": properties or {}}
+    parameters: dict[str, Any] = {
+        "type": "object",
+        "properties": properties or {},
+        "additionalProperties": False,
+    }
     if required:
         parameters["required"] = required
     return ToolSpec(

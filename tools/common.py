@@ -1,16 +1,17 @@
 from __future__ import annotations
 
 from functools import lru_cache
-import getpass
+import os
 from pathlib import Path
 import re
-import tempfile
 from typing import Any
 from urllib.parse import unquote, urlparse
 
+from auth import CanvasAPIError
 from client import create_canvas_client_from_env
 
 MAX_TOOL_LIMIT = 300
+DEFAULT_HTML_CHAR_LIMIT = 12000
 
 
 def normalize(text: str | None) -> str:
@@ -33,10 +34,10 @@ def clamp(value: int | None, default: int) -> int:
 
 
 def download_dir() -> Path:
-    username = re.sub(r"[^A-Za-z0-9._-]+", "_", getpass.getuser()).strip("._")
-    if not username:
-        username = "user"
-    return Path(tempfile.gettempdir()) / f"canvas_files_{username}"
+    root = Path.home() / ".cache" / "canvasmcp" / "downloads"
+    root.mkdir(parents=True, exist_ok=True)
+    os.chmod(root, 0o700)
+    return root
 
 
 def safe_filename(name: str) -> str:
@@ -78,6 +79,48 @@ def assignment_submission_download_path(
 @lru_cache(maxsize=1)
 def canvas_client():
     return create_canvas_client_from_env()
+
+
+def reset_canvas_client() -> None:
+    canvas_client.cache_clear()
+
+
+def tool_error(code: str, message: str, **extra: Any) -> dict[str, Any]:
+    payload: dict[str, Any] = {"error": code, "message": message}
+    payload.update(extra)
+    return payload
+
+
+def missing_argument(name: str) -> dict[str, Any]:
+    return tool_error("missing_argument", f"{name} is required")
+
+
+def invalid_argument(message: str) -> dict[str, Any]:
+    return tool_error("invalid_argument", message)
+
+
+def canvas_api_tool_error(exc: CanvasAPIError) -> dict[str, Any]:
+    message = str(exc)
+    if exc.status_code in {401, 403}:
+        return tool_error("forbidden", message)
+    if exc.status_code == 404:
+        return tool_error("not_found", message)
+    return tool_error("canvas_api_error", message)
+
+
+def truncate_html(
+    value: Any, *, limit: int = DEFAULT_HTML_CHAR_LIMIT
+) -> str | None:
+    if value is None:
+        return None
+    return str(value)[:limit]
+
+
+def looks_like_canvas_id(value: str) -> bool:
+    trimmed = value.strip()
+    return bool(
+        re.fullmatch(r"\d+", trimmed) or re.fullmatch(r"\d+~\d+", trimmed)
+    )
 
 
 def course_id_prefix(course_id: str | None) -> str | None:
@@ -259,6 +302,18 @@ def is_not_found_message(message: str) -> bool:
     return "not found" in lowered or "could not find" in lowered
 
 
+def is_forbidden_error(exc: CanvasAPIError | str) -> bool:
+    if isinstance(exc, CanvasAPIError) and exc.status_code is not None:
+        return exc.status_code in {401, 403}
+    return is_forbidden_message(str(exc))
+
+
+def is_not_found_error(exc: CanvasAPIError | str) -> bool:
+    if isinstance(exc, CanvasAPIError) and exc.status_code is not None:
+        return exc.status_code == 404
+    return is_not_found_message(str(exc))
+
+
 def first_non_none(*values: Any) -> Any:
     for value in values:
         if value is not None:
@@ -361,7 +416,10 @@ def recommended_tool_for_resource(resource_type: str | None) -> str | None:
 
 
 def map_discussion_entry(
-    entry: dict[str, Any], include_replies: bool
+    entry: dict[str, Any],
+    include_replies: bool,
+    *,
+    html_char_limit: int = DEFAULT_HTML_CHAR_LIMIT,
 ) -> dict[str, Any]:
     mapped = {
         "id": str(entry.get("id", "")),
@@ -374,7 +432,7 @@ def map_discussion_entry(
         "rating_sum": entry.get("rating_sum"),
         "user_id": str(entry["user_id"]) if entry.get("user_id") is not None else None,
         "user_name": entry.get("user_name"),
-        "message": entry.get("message"),
+        "message": truncate_html(entry.get("message"), limit=html_char_limit),
         "read_state": entry.get("read_state"),
         "forced_read_state": entry.get("forced_read_state"),
     }

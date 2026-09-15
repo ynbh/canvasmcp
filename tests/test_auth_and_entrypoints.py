@@ -273,7 +273,7 @@ class TestAuthPriority:
         cookies = ("session", "csrf")
         with (
             mock.patch("auth.resolve_canvas_base_url", return_value="https://umd.instructure.com"),
-            mock.patch("auth._read_chrome_cookies", return_value=cookies),
+            mock.patch("auth.read_chrome_session_cookies", return_value=cookies),
         ):
             from auth import ensure_canvas_auth_configured
 
@@ -283,7 +283,7 @@ class TestAuthPriority:
     def test_raises_when_no_chrome_cookies(self):
         with (
             mock.patch("auth.resolve_canvas_base_url", return_value="https://umd.instructure.com"),
-            mock.patch("auth._read_chrome_cookies", return_value=None),
+            mock.patch("auth.read_chrome_session_cookies", return_value=None),
         ):
             from auth import CanvasAPIError, ensure_canvas_auth_configured
 
@@ -340,7 +340,7 @@ class TestCreateCanvasClientFromEnv:
         cookies = ("session_val", "csrf_val")
         with (
             mock.patch("auth.resolve.resolve_canvas_base_url", return_value="https://umd.instructure.com"),
-            mock.patch("client._read_chrome_cookies", return_value=cookies),
+            mock.patch("client.read_chrome_session_cookies", return_value=cookies),
         ):
             from client import create_canvas_client_from_env
 
@@ -352,7 +352,7 @@ class TestCreateCanvasClientFromEnv:
     def test_raises_without_chrome_cookies(self):
         with (
             mock.patch("auth.resolve.resolve_canvas_base_url", return_value="https://umd.instructure.com"),
-            mock.patch("client._read_chrome_cookies", return_value=None),
+            mock.patch("client.read_chrome_session_cookies", return_value=None),
         ):
             from auth import CanvasAPIError
             from client import create_canvas_client_from_env
@@ -476,7 +476,7 @@ class TestGeneratedCli:
         ):
             result = runner.invoke(cli.app, ["auth-status"])
         assert result.exit_code == 0
-        assert '"auth_mode": null' in result.stdout
+        assert json.loads(result.stdout)["auth_mode"] is None
         assert "No usable Canvas session" in result.stdout
 
     def test_auth_status_catches_canvas_api_error_and_returns_json(self):
@@ -492,7 +492,7 @@ class TestGeneratedCli:
         ):
             result = runner.invoke(cli.app, ["auth-status"])
         assert result.exit_code == 0
-        assert '"auth_status": "error"' in result.stdout
+        assert json.loads(result.stdout)["auth_status"] == "error"
         assert "Could not infer a Canvas site from Chrome" in result.stdout
         assert "Traceback" not in result.stdout
 
@@ -536,7 +536,7 @@ class TestGeneratedCli:
         ):
             result = runner.invoke(cli.app, ["settings", "show"])
         assert result.exit_code == 0
-        assert '"auth_status": "error"' in result.stdout
+        assert json.loads(result.stdout)["auth"]["auth_status"] == "error"
         assert "Could not infer a Canvas site from Chrome" in result.stdout
         assert "Traceback" not in result.stdout
 
@@ -598,7 +598,9 @@ class TestGeneratedCli:
         ):
             result = runner.invoke(cli.app, ["courses"])
         assert result.exit_code == 1
-        assert "Error: Open Canvas in Chrome and retry" in result.stdout
+        assert json.loads(result.stdout) == {
+            "error": "auth_error", "message": "Open Canvas in Chrome and retry"
+        }
         assert "Traceback" not in result.stdout
 
 

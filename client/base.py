@@ -2,23 +2,39 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterable
-from urllib.parse import urlparse
 
 from canvasapi import Canvas
-from canvasapi.exceptions import CanvasException
+from canvasapi.exceptions import (
+    CanvasException,
+    Forbidden,
+    ResourceDoesNotExist,
+    Unauthorized,
+)
 from canvasapi.paginated_list import PaginatedList
 from canvasapi.util import combine_kwargs
 
-from auth import CanvasAPIError
+from auth import CanvasAPIError, apply_chrome_session_to_http_session
 from auth.urls import canvas_root_url, normalize_canvas_api_base_url
 
 DEFAULT_CANVAS_BASE_URL = "https://canvas.instructure.com"
 MAX_PER_PAGE = 100
 
+_CANVAS_EXCEPTION_STATUS: tuple[tuple[type[CanvasException], int], ...] = (
+    (Unauthorized, 401),
+    (Forbidden, 403),
+    (ResourceDoesNotExist, 404),
+)
+
+
+def _status_code_for_canvas_exception(exc: CanvasException) -> int | None:
+    for exc_type, status_code in _CANVAS_EXCEPTION_STATUS:
+        if isinstance(exc, exc_type):
+            return status_code
+    return None
+
 
 @dataclass(slots=True)
 class CanvasClientBase:
-    token_provider: Callable[[], str]
     base_url: str = DEFAULT_CANVAS_BASE_URL
     cookie_provider: Callable[[], tuple[str, str] | None] | None = None
     _root_url: str = field(init=False, repr=False)
@@ -46,13 +62,14 @@ class CanvasClientBase:
         requester.access_token = ""
         http_session = getattr(requester, "_session", None)
         if http_session is not None:
-            domain = urlparse(self._root_url).hostname or ""
-            http_session.cookies.set("canvas_session", session_cookie, domain=domain)
-            http_session.cookies.set("_csrf_token", csrf_token, domain=domain)
-            http_session.headers.update({"X-CSRF-Token": csrf_token})
+            apply_chrome_session_to_http_session(
+                http_session,
+                base_url=self._root_url,
+                cookies=(session_cookie, csrf_token),
+            )
 
     def _run_with_canvas(self, call: Callable[[Canvas], Any]) -> Any:
-        canvas = Canvas(self._root_url, self.token_provider())
+        canvas = Canvas(self._root_url, "")
         self._inject_session_cookies(canvas)
         try:
             return call(canvas)
@@ -63,8 +80,14 @@ class CanvasClientBase:
         try:
             return self._run_with_canvas(action)
         except (CanvasException, TypeError, ValueError) as exc:
+            status_code = (
+                _status_code_for_canvas_exception(exc)
+                if isinstance(exc, CanvasException)
+                else None
+            )
             raise CanvasAPIError(
-                f"Canvas request failed: {context}. Response: {exc}"
+                f"Canvas request failed: {context}. Response: {exc}",
+                status_code=status_code,
             ) from exc
 
     @staticmethod

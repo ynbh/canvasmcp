@@ -7,6 +7,7 @@ from tools.common import (
     clamp,
     extract_discussion_topic_id,
     id_aliases,
+    missing_argument,
     short_canvas_id,
 )
 
@@ -69,7 +70,7 @@ def _assignment_details(
 def list_course_assignments(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
     if not course_id:
-        return {"error": "course_id is required"}
+        return missing_argument("course_id")
 
     include_submission = bool(args.get("include_submission", False))
     limit = clamp(args.get("limit"), 100)
@@ -96,9 +97,9 @@ def get_assignment_details(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
     assignment_id = str(args.get("assignment_id", "")).strip()
     if not course_id:
-        return {"error": "course_id is required"}
+        return missing_argument("course_id")
     if not assignment_id:
-        return {"error": "assignment_id is required"}
+        return missing_argument("assignment_id")
 
     assignment = canvas_client().get_assignment(
         course_id=course_id,
@@ -117,9 +118,9 @@ def get_assignment_rubric(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
     assignment_id = str(args.get("assignment_id", "")).strip()
     if not course_id:
-        return {"error": "course_id is required"}
+        return missing_argument("course_id")
     if not assignment_id:
-        return {"error": "assignment_id is required"}
+        return missing_argument("assignment_id")
 
     include_assessment = bool(args.get("include_assessment", False))
     client = canvas_client()
@@ -173,7 +174,7 @@ def get_assignment_rubric(args: dict[str, Any]) -> dict[str, Any]:
 def list_assignment_groups(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
     if not course_id:
-        return {"error": "course_id is required"}
+        return missing_argument("course_id")
 
     include_assignments = bool(args.get("include_assignments", False))
     include_submission = bool(args.get("include_submission", False))

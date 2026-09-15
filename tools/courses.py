@@ -6,13 +6,18 @@ from tools.common import (
     canvas_client,
     clamp,
     course_tab_target_url,
+    id_aliases,
+    invalid_argument,
+    missing_argument,
     normalize,
 )
 
 
 def map_course(course: dict[str, Any]) -> dict[str, Any]:
+    course_id = str(course.get("id", ""))
     return {
-        "id": str(course.get("id", "")),
+        "id": course_id,
+        "id_aliases": id_aliases(course_id),
         "name": str(course.get("name", "Untitled course")),
         "course_code": str(course["course_code"])
         if course.get("course_code")
@@ -111,7 +116,7 @@ def resolve_course(args: dict[str, Any]) -> dict[str, Any]:
 def get_course_overview(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
     if not course_id:
-        return {"error": "course_id is required"}
+        return missing_argument("course_id")
 
     course = canvas_client().get_course(
         course_id=course_id,
@@ -128,9 +133,11 @@ def get_course_overview(args: dict[str, Any]) -> dict[str, Any]:
         for teacher in (course.get("teachers") or [])
         if isinstance(teacher, dict)
     ]
+    course_id_value = str(course.get("id", ""))
     return {
         "course": {
-            "id": str(course.get("id", "")),
+            "id": course_id_value,
+            "id_aliases": id_aliases(course_id_value),
             "name": course.get("name", "Untitled course"),
             "course_code": course.get("course_code"),
             "workflow_state": course.get("workflow_state"),
@@ -157,7 +164,7 @@ def get_course_overview(args: dict[str, Any]) -> dict[str, Any]:
 def get_course_syllabus(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
     if not course_id:
-        return {"error": "course_id is required"}
+        return missing_argument("course_id")
 
     include_body = bool(args.get("include_body", True))
     try:
@@ -192,7 +199,7 @@ def get_course_syllabus(args: dict[str, Any]) -> dict[str, Any]:
 def list_course_pages(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
     if not course_id:
-        return {"error": "course_id is required"}
+        return missing_argument("course_id")
 
     published_only = args.get("published_only")
     if published_only is not None:
@@ -208,6 +215,7 @@ def list_course_pages(args: dict[str, Any]) -> dict[str, Any]:
     items = [
         {
             "page_id": str(page.get("page_id", "")),
+            "id_aliases": id_aliases(str(page.get("page_id", ""))),
             "url": page.get("url"),
             "title": page.get("title", "Untitled page"),
             "created_at": page.get("created_at"),
@@ -226,7 +234,7 @@ def list_course_pages(args: dict[str, Any]) -> dict[str, Any]:
 def list_course_tabs(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
     if not course_id:
-        return {"error": "course_id is required"}
+        return missing_argument("course_id")
 
     limit = clamp(args.get("limit"), 100)
     tabs = canvas_client().list_tabs(course_id=course_id, limit=limit)
@@ -238,9 +246,9 @@ def get_course_tab(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
     tab_id = str(args.get("tab_id", "")).strip()
     if not course_id:
-        return {"error": "course_id is required"}
+        return missing_argument("course_id")
     if not tab_id:
-        return {"error": "tab_id is required"}
+        return missing_argument("tab_id")
 
     include_target = bool(args.get("include_target", True))
     tab = canvas_client().get_tab(course_id=course_id, tab_id=tab_id)
@@ -250,7 +258,7 @@ def get_course_tab(args: dict[str, Any]) -> dict[str, Any]:
     if include_target:
         target_url = course_tab_target_url(tab_id=tab_id, tab=mapped_tab)
         if target_url:
-            from tools.misc import resolve_canvas_url
+            from tools.resolvers import resolve_canvas_url
 
             target = resolve_canvas_url({"url": target_url, "fetch_details": True})
 
@@ -265,11 +273,11 @@ def get_course_tab(args: dict[str, Any]) -> dict[str, Any]:
 def list_course_people(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
     if not course_id:
-        return {"error": "course_id is required"}
+        return missing_argument("course_id")
 
     enrollment_types = args.get("enrollment_types")
     if enrollment_types is not None and not isinstance(enrollment_types, list):
-        return {"error": "enrollment_types must be an array of strings"}
+        return invalid_argument("enrollment_types must be an array of strings")
 
     limit = clamp(args.get("limit"), 100)
     users = canvas_client().list_course_users(

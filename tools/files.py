@@ -2,13 +2,20 @@ from __future__ import annotations
 
 from typing import Any
 
-from tools.common import canvas_client, clamp, download_dir, download_file_path
+from tools.common import (
+    canvas_client,
+    clamp,
+    download_dir,
+    download_file_path,
+    id_aliases,
+    missing_argument,
+)
 
 
 def list_course_files(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
     if not course_id:
-        return {"error": "course_id is required"}
+        return missing_argument("course_id")
 
     limit = clamp(args.get("limit"), 100)
     files = canvas_client().list_files(
@@ -21,6 +28,7 @@ def list_course_files(args: dict[str, Any]) -> dict[str, Any]:
     items = [
         {
             "id": str(file.get("id", "")),
+            "id_aliases": id_aliases(str(file.get("id", ""))),
             "display_name": file.get("display_name"),
             "filename": file.get("filename"),
             "content_type": file.get("content_type"),
@@ -40,9 +48,9 @@ def download_course_file(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
     file_id = str(args.get("file_id", "")).strip()
     if not course_id:
-        return {"error": "course_id is required"}
+        return missing_argument("course_id")
     if not file_id:
-        return {"error": "file_id is required"}
+        return missing_argument("file_id")
 
     force_refresh = bool(args.get("force_refresh", False))
     root = download_dir()
@@ -87,13 +95,14 @@ def download_course_file(args: dict[str, Any]) -> dict[str, Any]:
 def list_course_folders(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
     if not course_id:
-        return {"error": "course_id is required"}
+        return missing_argument("course_id")
 
     limit = clamp(args.get("limit"), 150)
     folders = canvas_client().list_folders(course_id=course_id, limit=limit)
     items = [
         {
             "id": str(folder.get("id", "")),
+            "id_aliases": id_aliases(str(folder.get("id", ""))),
             "name": folder.get("name", "Untitled folder"),
             "full_name": folder.get("full_name"),
             "parent_folder_id": str(folder["parent_folder_id"])
@@ -111,7 +120,7 @@ def list_course_folders(args: dict[str, Any]) -> dict[str, Any]:
 def list_modules(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
     if not course_id:
-        return {"error": "course_id is required"}
+        return missing_argument("course_id")
 
     limit = clamp(args.get("limit"), 100)
     items_limit = clamp(args.get("items_limit"), 100)
@@ -151,6 +160,7 @@ def list_modules(args: dict[str, Any]) -> dict[str, Any]:
         items.append(
             {
                 "id": str(module.get("id", "")),
+                "id_aliases": id_aliases(str(module.get("id", ""))),
                 "name": module.get("name", "Untitled module"),
                 "position": module.get("position"),
                 "unlock_at": module.get("unlock_at"),
