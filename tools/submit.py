@@ -40,9 +40,7 @@ SLEEP_WARNING = (
     "Pass caffeinate=true (CLI: --caffeinate) on confirm to keep the Mac awake "
     "until fire finishes."
 )
-RESUBMIT_WARNING = (
-    "A current attempt exists. Confirming will submit a new attempt."
-)
+RESUBMIT_WARNING = "A current attempt exists. Confirming will submit a new attempt."
 _REFUSE_MESSAGES = {
     "bad_submission_type": "Assignment does not accept this submission type",
     "bad_extension": "A file extension is not in allowed_extensions",
@@ -67,24 +65,18 @@ def _has_offset(value: str) -> bool:
 def _body_preview(body: Any) -> str | None:
     if body is None:
         return None
-    text = str(body)
-    if len(text) <= BODY_PREVIEW_LIMIT:
-        return text
-    return text[:BODY_PREVIEW_LIMIT]
+    return str(body)[:BODY_PREVIEW_LIMIT]
 
 
 def _auth_status() -> dict[str, Any]:
     try:
-        status = get_auth_status()
+        return get_auth_status()
     except Exception as exc:
         return {
             "auth_verified": False,
             "auth_status": "probe_failed",
             "error": str(exc),
         }
-    if isinstance(status, dict):
-        return status
-    return {"auth_verified": False, "auth_status": "unexpected_response"}
 
 
 def _override_warning(job: dict[str, Any]) -> str:
@@ -332,13 +324,7 @@ def _delete_uploaded_files(file_ids: list[Any]) -> list[dict[str, Any]]:
     for file_id in file_ids:
         ident = str(file_id)
         try:
-            result = client.delete_user_file(file_id=ident)
-            if isinstance(result, dict):
-                notes.append(result)
-            else:
-                notes.append({"file_id": ident, "result": result})
-        except CanvasAPIError as exc:
-            notes.append({"file_id": ident, "error": str(exc)})
+            notes.append(client.delete_user_file(file_id=ident))
         except Exception as exc:
             notes.append({"file_id": ident, "error": str(exc)})
     return notes
@@ -604,10 +590,7 @@ def confirm_assignment_submission(args: dict[str, Any]) -> dict[str, Any]:
             )
         except CanvasAPIError as exc:
             return canvas_api_tool_error(exc)
-        try:
-            notify(f"Submitted {assignment_name}")
-        except Exception:
-            pass
+        notify(f"Submitted {assignment_name}")
         return {
             "ok": True,
             "now": True,

@@ -6,7 +6,7 @@ import pytest
 
 from auth import CanvasAPIError
 from client import CanvasClient
-from client.submissions_write import CanvasSubmissionsWriteMixin
+from canvasapi.assignment import Assignment
 
 
 def _patch_canvas(assignment=None, *, canvas=None):
@@ -21,11 +21,6 @@ def _patch_canvas(assignment=None, *, canvas=None):
 
 def _write_client() -> CanvasClient:
     return CanvasClient(base_url="https://school.instructure.com")
-
-
-class TestCanvasClientMixin:
-    def test_client_includes_write_mixin(self):
-        assert issubclass(CanvasClient, CanvasSubmissionsWriteMixin)
 
 
 class TestUploadSubmissionFile:
@@ -51,8 +46,6 @@ class TestUploadSubmissionFile:
         assignment.upload_to_submission.assert_called_once_with(
             "essay.pdf", submit_assignment=False
         )
-        _, kwargs = assignment.upload_to_submission.call_args
-        assert kwargs["submit_assignment"] is False
         canvas.get_course.assert_called_once_with("c1")
         canvas.get_course.return_value.get_assignment.assert_called_once_with("a1")
         assert result["id"] == 99
@@ -82,7 +75,9 @@ class TestUploadSubmissionFile:
         assignment.upload_to_submission.return_value = (False, {"message": "denied"})
         patcher, _canvas = _patch_canvas(assignment)
         with patcher:
-            with pytest.raises(CanvasAPIError, match="upload submission file") as exc_info:
+            with pytest.raises(
+                CanvasAPIError, match="upload submission file"
+            ) as exc_info:
                 _write_client().upload_submission_file(
                     course_id="c1",
                     assignment_id="a1",
@@ -114,8 +109,6 @@ class TestSubmitAssignment:
         assignment.submit.assert_called_once_with(
             {"submission_type": "online_upload", "file_ids": [99, 100]}
         )
-        submitted = assignment.submit.call_args.args[0]
-        assert submitted is not payload
         canvas.get_course.assert_called_once_with("c1")
         assert result["submission_type"] == "online_upload"
         assert result["id"] == 7
@@ -145,7 +138,8 @@ class TestSubmitAssignment:
         assert result["body"] == "hello world"
 
     def test_requires_submission_type(self):
-        assignment = mock.MagicMock()
+        requester = mock.MagicMock()
+        assignment = Assignment(requester, {"id": 1, "course_id": 2})
         patcher, _canvas = _patch_canvas(assignment)
         with patcher:
             with pytest.raises(CanvasAPIError, match="submission_type"):
@@ -154,7 +148,7 @@ class TestSubmitAssignment:
                     assignment_id="a1",
                     submission={"body": "missing type"},
                 )
-        assignment.submit.assert_not_called()
+        requester.request.assert_not_called()
 
 
 class TestDeleteUserFile:
@@ -177,21 +171,3 @@ class TestDeleteUserFile:
         assert result["id"] == 99
         assert result["display_name"] == "essay.pdf"
         assert "skipped" not in result
-
-    def test_skips_when_file_delete_unavailable(self):
-        canvas_cls = mock.MagicMock()
-        with (
-            mock.patch(
-                "client.submissions_write._canvasapi_can_delete_files",
-                return_value=False,
-            ),
-            mock.patch("client.base.Canvas", canvas_cls),
-        ):
-            result = _write_client().delete_user_file(file_id="99")
-
-        assert result == {
-            "skipped": True,
-            "file_id": "99",
-            "reason": "installed canvasapi does not support File.delete",
-        }
-        canvas_cls.assert_not_called()

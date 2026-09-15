@@ -3,11 +3,6 @@ from __future__ import annotations
 from typing import Any
 
 from canvasapi import Canvas
-from canvasapi.file import File
-
-
-def _canvasapi_can_delete_files() -> bool:
-    return callable(getattr(File, "delete", None))
 
 
 class CanvasSubmissionsWriteMixin:
@@ -20,9 +15,7 @@ class CanvasSubmissionsWriteMixin:
     ) -> dict[str, Any]:
         def _load(canvas: Canvas) -> dict[str, Any]:
             assignment = canvas.get_course(course_id).get_assignment(assignment_id)
-            ok, payload = assignment.upload_to_submission(
-                path, submit_assignment=False
-            )
+            ok, payload = assignment.upload_to_submission(path, submit_assignment=False)
             if not ok:
                 raise ValueError(payload)
             return self._public_file_dict(payload)
@@ -40,10 +33,8 @@ class CanvasSubmissionsWriteMixin:
         submission: dict[str, Any],
     ) -> dict[str, Any]:
         def _load(canvas: Canvas) -> dict[str, Any]:
-            if not isinstance(submission, dict) or "submission_type" not in submission:
-                raise ValueError("Dictionary with key 'submission_type' is required.")
             assignment = canvas.get_course(course_id).get_assignment(assignment_id)
-            result = assignment.submit(dict(submission))
+            result = assignment.submit(submission)
             return self._item_to_dict(result)
 
         return self._call_canvas(
@@ -52,13 +43,6 @@ class CanvasSubmissionsWriteMixin:
         )
 
     def delete_user_file(self, *, file_id: str) -> dict[str, Any]:
-        if not _canvasapi_can_delete_files():
-            return {
-                "skipped": True,
-                "file_id": file_id,
-                "reason": "installed canvasapi does not support File.delete",
-            }
-
         def _load(canvas: Canvas) -> dict[str, Any]:
             deleted = canvas.get_file(file_id).delete()
             return self._public_file_dict(deleted)

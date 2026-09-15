@@ -113,10 +113,7 @@ def truncate_html(
 ) -> str | None:
     if value is None:
         return None
-    text = str(value)
-    if len(text) <= limit:
-        return text
-    return text[:limit]
+    return str(value)[:limit]
 
 
 def looks_like_canvas_id(value: str) -> bool:

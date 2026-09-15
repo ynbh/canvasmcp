@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from auth import CanvasAPIError, get_auth_status
+from auth import get_auth_status
 from schedule.caffeinate import stop_caffeinate
 from schedule.launchd import bootout_job
 from schedule.notify import notify
@@ -14,6 +14,7 @@ def canvas_client():
     from tools.common import canvas_client as _canvas_client
 
     return _canvas_client()
+
 
 MISSED_SKEW = timedelta(seconds=60)
 
@@ -55,10 +56,7 @@ def _notify_message(job: dict[str, Any]) -> str:
 def _finish(job_id: str, **fields: Any) -> dict[str, Any]:
     fields.setdefault("fired_at", _now().isoformat())
     job = update_job(job_id, **fields)
-    try:
-        notify(_notify_message(job))
-    except Exception:
-        pass
+    notify(_notify_message(job))
     bootout_job(job_id)
     stop_caffeinate(job_id)
     return get_job(job_id) or job
@@ -96,8 +94,6 @@ def fire_job(job_id: str) -> dict[str, Any]:
             assignment_id=job["assignment_id"],
             submission=_submission_payload(job),
         )
-    except CanvasAPIError as exc:
-        return _finish(job_id, status="failed", error=str(exc))
     except Exception as exc:
         return _finish(job_id, status="failed", error=str(exc))
 

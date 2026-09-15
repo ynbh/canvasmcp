@@ -68,15 +68,15 @@ def mock_notify(monkeypatch):
 def mock_caffeinate_procs(monkeypatch):
     kills: list[int] = []
 
-    def fake_popen(argv):
+    def fake_popen(argv, **kwargs):
         assert argv == ["caffeinate", "-i"]
         return mock.Mock(pid=4242)
 
-    def fake_kill(pid: int) -> None:
+    def fake_kill(pid: int, signal: int) -> None:
         kills.append(pid)
 
-    monkeypatch.setattr("schedule.caffeinate._popen", fake_popen)
-    monkeypatch.setattr("schedule.caffeinate._kill", fake_kill)
+    monkeypatch.setattr("schedule.caffeinate.subprocess.Popen", fake_popen)
+    monkeypatch.setattr("schedule.caffeinate.os.kill", fake_kill)
     return kills
 
 
@@ -109,7 +109,9 @@ class TestPreviewStore:
         later = datetime.fromisoformat(saved["expires_at"]) + timedelta(seconds=1)
         monkeypatch.setattr("schedule.store._now", lambda: later)
         assert load_preview(saved["preview_token"]) is None
-        assert not (schedule_env / "previews" / f"{saved['preview_token']}.json").exists()
+        assert not (
+            schedule_env / "previews" / f"{saved['preview_token']}.json"
+        ).exists()
 
     def test_consume_preview_deletes_token(self, schedule_env):
         saved = save_preview({"course_id": "1"})
@@ -156,13 +158,20 @@ class TestPendingByAssignment:
 
 
 class TestLaunchdPlist:
-    def test_write_plist_uses_local_calendar_and_canvas_bin(self, schedule_env, tmp_path):
+    def test_write_plist_uses_local_calendar_and_canvas_bin(
+        self, schedule_env, tmp_path
+    ):
         submit_at = datetime(2026, 9, 10, 23, 57, tzinfo=timezone(timedelta(hours=-4)))
         path = write_plist("jobA", submit_at, canvas_bin="/opt/bin/canvas")
         data = plistlib.loads(path.read_bytes())
         local = submit_at.astimezone()
         assert data["Label"] == "com.canvasmcp.submit.jobA"
-        assert data["ProgramArguments"] == ["/opt/bin/canvas", "scheduled", "fire", "jobA"]
+        assert data["ProgramArguments"] == [
+            "/opt/bin/canvas",
+            "scheduled",
+            "fire",
+            "jobA",
+        ]
         assert data["StartCalendarInterval"] == {
             "Year": local.year,
             "Month": local.month,
