@@ -131,7 +131,7 @@ def register(
 
     @tool_app.command("list")
     def tool_list() -> None:
-        emit({"tools": tool_names}, tool_name="tool_list", machine_default=True)
+        emit({"tools": tool_names}, tool_name="tool_list")
 
     @tool_app.command("run")
     def tool_run(

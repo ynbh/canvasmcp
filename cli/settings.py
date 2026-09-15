@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sys
+
 import typer
 
 import auth.settings as auth_settings
@@ -7,7 +9,7 @@ from auth import CanvasAPIError, get_auth_status
 from auth.chrome_cookies import resolve_chrome_profile
 from auth.inspect import describe_chrome_profiles
 from auth.settings import clear_settings, set_selected_profile
-from cli.output import choose_profile, emit, fail
+from cli.output import OutputMode, emit, fail, output_mode
 
 settings_app = typer.Typer(help="Saved Chrome profile selection and auth state.")
 
@@ -61,6 +63,36 @@ def settings_choose_profile(
         _render_selected_profile(saved)
         return
 
-    selected = choose_profile(describe_chrome_profiles())
+    selected = _choose_profile(describe_chrome_profiles())
     saved = set_selected_profile(name=selected["name"], path=selected["path"])
     _render_selected_profile(saved)
+
+
+def _choose_profile(profiles: list[dict]) -> dict:
+    if not sys.stdin.isatty() or output_mode() == OutputMode.json:
+        fail(
+            "profile_required",
+            'Use canvas settings choose-profile "<name>" when using JSON or non-interactive input.',
+        )
+    if not profiles:
+        fail("not_found", "No profiles found")
+    choices = [
+        {
+            "number": index,
+            "name": profile["name"],
+            "selected": profile["selected"],
+            "status": profile["auth_status"],
+            "canvas": profile["resolved_canvas_base_url"]
+            or profile["detected_canvas_domains"],
+        }
+        for index, profile in enumerate(profiles, start=1)
+    ]
+    emit({"choices": choices})
+    try:
+        number = int(typer.prompt("Select profile number", err=True))
+    except ValueError:
+        fail("invalid_selection", "Invalid profile selection")
+    else:
+        if 1 <= number <= len(profiles):
+            return profiles[number - 1]
+        fail("invalid_selection", "Invalid profile selection")

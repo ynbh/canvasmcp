@@ -19,4 +19,4 @@ def scheduled_fire(
     from schedule.fire import fire_job
 
     result = fire_job(job_id)
-    emit(result, tool_name="scheduled_fire", machine_default=True)
+    emit(result, tool_name="scheduled_fire")

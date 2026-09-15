@@ -50,6 +50,7 @@ def configure_output(
     ] = OutputMode.auto,
 ) -> None:
     ctx.meta["output"] = output
+    ctx.meta["machine_output"] = ctx.invoked_subcommand in {"tool", "scheduled"}
 
 
 def _ensure_auth() -> None:

@@ -157,22 +157,19 @@ def _value(value: Any, key: str = "") -> str:
     ):
         parser = _HTMLText()
         parser.feed(value)
-        return _literal("".join(parser.parts).strip())
-    return _literal(value)
+        return "".join(parser.parts).strip()
+    return str(value)
 
 
-def output_mode(*, machine_default: bool = False) -> OutputMode:
+def output_mode() -> OutputMode:
     context = click.get_current_context(silent=True)
     mode = context.meta.get("output", OutputMode.auto) if context else OutputMode.auto
     if mode != OutputMode.auto:
         return OutputMode(mode)
-    while context is not None:
-        if context.info_name in {"tool", "scheduled"}:
-            machine_default = True
-        context = context.parent
+    machine_output = context.meta.get("machine_output", False) if context else False
     return (
         OutputMode.json
-        if machine_default or not sys.stdout.isatty()
+        if machine_output or not sys.stdout.isatty()
         else OutputMode.pretty
     )
 
@@ -450,10 +447,9 @@ def emit(
     tool_name: str = "",
     failures: bool = True,
     exit_code: int = 1,
-    machine_default: bool = False,
 ) -> None:
     failed = failures and (bool(result.get("error")) or result.get("ok") is False)
-    if output_mode(machine_default=machine_default) == OutputMode.json:
+    if output_mode() == OutputMode.json:
         sys.stdout.write(
             json.dumps(result, default=str, ensure_ascii=False, separators=(",", ":"))
             + "\n"
@@ -469,33 +465,3 @@ def emit(
 
 def fail(code: str, message: str, *, exit_code: int = 1, **details: Any) -> None:
     emit({"error": code, "message": message, **details}, exit_code=exit_code)
-
-
-def choose_profile(profiles: list[dict[str, Any]]) -> dict[str, Any]:
-    if not sys.stdin.isatty() or output_mode() == OutputMode.json:
-        fail(
-            "profile_required",
-            'Use canvas settings choose-profile "<name>" when using JSON or non-interactive input.',
-        )
-    if not profiles:
-        fail("not_found", "No profiles found")
-    view = _Pretty(Console(stderr=True))
-    for index, item in enumerate(profiles, start=1):
-        domain = (
-            item.get("resolved_canvas_base_url")
-            or ", ".join(item.get("detected_canvas_domains", []))
-            or "not supplied"
-        )
-        selected = "selected; " if item.get("selected") else ""
-        view.line(
-            f"{index}. {item['name']} [{selected}{item.get('auth_status')}] {domain}"
-        )
-    choice = typer.prompt("Select profile number", err=True)
-    try:
-        number = int(choice)
-    except ValueError:
-        fail("invalid_selection", "Invalid profile selection")
-    else:
-        if 1 <= number <= len(profiles):
-            return profiles[number - 1]
-        fail("invalid_selection", "Invalid profile selection")

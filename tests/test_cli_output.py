@@ -295,14 +295,25 @@ def test_profile_picker_rejects_zero_instead_of_selecting_last_profile(monkeypat
     import click
     import typer
 
-    from cli.output import OutputMode, choose_profile
+    from cli.output import OutputMode
+    from cli.settings import _choose_profile
 
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
     monkeypatch.setattr(typer, "prompt", lambda *_args, **_kwargs: "0")
     with click.Context(click.Command("choose")) as context:
         context.meta["output"] = OutputMode.pretty
         with pytest.raises(typer.Exit) as error:
-            choose_profile([{"name": "School", "auth_status": "verified"}])
+            _choose_profile(
+                [
+                    {
+                        "name": "School",
+                        "auth_status": "verified",
+                        "selected": True,
+                        "resolved_canvas_base_url": "https://canvas.example.edu",
+                        "detected_canvas_domains": ["canvas.example.edu"],
+                    }
+                ]
+            )
     assert error.value.exit_code == 1
 
 
