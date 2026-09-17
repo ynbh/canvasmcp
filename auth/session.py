@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 from .chrome_cookies import list_canvas_cookie_domains, read_chrome_cookies
 
@@ -39,7 +39,7 @@ def apply_chrome_session_to_http_session(
     http_session.cookies.set("canvas_session", session_cookie, domain=domain)
     http_session.cookies.set("_csrf_token", csrf_token, domain=domain)
 
-    request_headers = {"X-CSRF-Token": csrf_token}
+    request_headers = {"X-CSRF-Token": unquote(csrf_token)}
     if headers:
         request_headers.update(headers)
     http_session.headers.update(request_headers)
