@@ -36,7 +36,9 @@ See the [README](../README.md) for install, auth, and the usual flow. `canvas --
 | `canvas files folders ID` | `list_course_folders` |
 | `canvas announcements --course ID` | `list_announcements` |
 | `canvas todo` | `list_todo_items` |
+| `canvas inbox list` | `list_inbox_conversations` |
+| `canvas inbox show CONVERSATION` | `get_inbox_conversation` |
 | `canvas course people ID` | `list_course_people` |
 | `canvas url URL` | `resolve_canvas_url` |
 
-`canvas_get_page` is wiki pages only. Use `canvas url` when the link type is unknown. Non-self submission queries need extra Canvas permissions.
+Inbox commands are read-only and never mark a conversation as read. `canvas_get_page` is wiki pages only. Use `canvas url` when the link type is unknown. Non-self submission queries need extra Canvas permissions.

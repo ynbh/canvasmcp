@@ -22,6 +22,7 @@ from tools.files import (
     list_modules,
 )
 from tools.grades import get_course_grade_summary
+from tools.inbox import get_inbox_conversation, list_inbox_conversations
 from tools.misc import (
     canvas_get_page,
     get_course_context_snapshot,
@@ -55,6 +56,7 @@ __all__ = [
     "get_course_syllabus",
     "get_course_tab",
     "get_discussion_entries",
+    "get_inbox_conversation",
     "get_scheduled_submission",
     "get_today",
     "install_assignment_submission_files",
@@ -69,6 +71,7 @@ __all__ = [
     "list_course_tabs",
     "list_courses",
     "list_discussion_topics",
+    "list_inbox_conversations",
     "list_modules",
     "list_scheduled_submissions",
     "list_todo_items",
