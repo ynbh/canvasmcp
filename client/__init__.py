@@ -10,6 +10,7 @@ from .assignments import CanvasAssignmentsMixin
 from .base import CanvasClientBase
 from .content import CanvasContentMixin
 from .courses import CanvasCoursesMixin
+from .inbox import CanvasInboxMixin
 from .submissions_write import CanvasSubmissionsWriteMixin
 
 
@@ -18,6 +19,7 @@ class CanvasClient(
     CanvasAssignmentsMixin,
     CanvasSubmissionsWriteMixin,
     CanvasContentMixin,
+    CanvasInboxMixin,
     CanvasClientBase,
 ):
     pass

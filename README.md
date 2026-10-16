@@ -1,66 +1,89 @@
 # canvas-cli
 
-Local Canvas LMS access for the terminal, coding agents, and optional MCP clients.
+Use Canvas LMS from your terminal. Check what's due, read assignments, announcements, and your inbox, download course files, and submit work, all without opening a browser tab.
 
-- `canvas` — CLI (preferred)
-- `canvas-mcp` — same tools over MCP
-- Auth is your existing Chrome Canvas session
+It signs in with the Canvas session already in your browser, so there's no API token to create. It ships as two commands:
 
-Agent skill: [`skills/canvas-cli/SKILL.md`](skills/canvas-cli/SKILL.md). Full command table: [`docs/cli.md`](docs/cli.md).
+- `canvas`: the CLI.
+- `canvas-mcp`: the same tools as an MCP server, for chat clients that need one.
+
+If you're setting up a coding agent, point it at [`skills/canvas-cli/SKILL.md`](skills/canvas-cli/SKILL.md).
 
 ## Install
 
 ```bash
 uv tool install git+https://github.com/ynbh/canvasmcp.git
-canvas --help
 ```
 
-Pin a ref with `@main` or `@<tag-or-commit>`. Local dev: `uv sync` then `uv run canvas --help`.
+Add `@<tag-or-commit>` to the URL to pin a version. To work on the code instead, run `uv sync`, then `uv run canvas`.
 
-## Auth
+## Sign in
 
-Log in to Canvas in Chrome, then:
+Log in to Canvas in Chrome, then check that the CLI can see your session:
 
 ```bash
 canvas auth-status
 ```
 
-If that fails: `canvas settings profiles`, `canvas settings choose-profile`, or `export CANVAS_BASE_URL=https://school.instructure.com`. On macOS, approve Keychain prompts. Then `canvas courses --all --limit 5`.
+On macOS, allow the Keychain prompt; the CLI needs it to read Chrome's cookies. If the check fails:
 
-## CLI
+- **You use more than one Chrome profile:** run `canvas settings choose-profile` to pick the one you use for Canvas.
+- **The CLI can't work out your school's Canvas address:** set it yourself with `export CANVAS_BASE_URL=https://school.instructure.com`.
+
+**Firefox:** log in there, then set `CANVAS_COOKIE_BROWSER=firefox` along with `CANVAS_BASE_URL`.
+
+**No browser on the machine:** set `CANVAS_SESSION_COOKIE` and `CANVAS_CSRF_TOKEN` (plus `CANVAS_BASE_URL`), copied from a logged-in browser. These are your login, so keep them out of files, shell history, and chats.
+
+## Look things up
 
 ```bash
-canvas resolve "ENGL394" --all
-canvas course context 12345
+canvas todo                                    # what Canvas says you need to do
+canvas resolve "ENGL394"                       # find a course ID by name or code
 canvas assignments list 12345 --bucket upcoming
-canvas assignments show 12345 67890 --include-submission
+canvas assignments show 12345 67890
+canvas announcements --course 12345
+canvas inbox list --scope unread               # reading never marks messages read
+canvas files download 12345 555
 canvas url "https://school.instructure.com/courses/12345/assignments/67890"
 ```
 
-`canvas --help` is the source of truth for flags. Raw tools: `canvas tool list` and `canvas tool run <name> --args '{...}'`.
+`canvas url` takes any Canvas link and tells you what it points to. Run `canvas --help` on any command for its options, or see [every command](docs/cli.md).
 
-## Output
+## Submit an assignment
 
-Terminal output uses readable lists and details; redirected output is compact JSON. Override with a global option before the command:
+A submission takes two steps. First, preview it, which shows exactly what will be sent and prints a token:
 
 ```bash
-canvas --output pretty assignments submissions scheduled
-canvas --output json courses
-export CANVAS_OUTPUT=json  # Consistent agent output, including through a PTY
+canvas assignments submissions preview 12345 67890 --type online_upload --file essay.pdf --now
 ```
 
-`--output auto|pretty|json` overrides `CANVAS_OUTPUT`. Low-level `tool` commands and hidden scheduler execution default to JSON even in a terminal. Explicit JSON preserves the full response; pretty views omit routine metadata and mark that omission.
+Then confirm with that token. Nothing reaches Canvas until you do:
 
-Operational errors are structured JSON on stdout in JSON mode, or readable diagnostics on stderr in pretty mode. Refused previews exit 1; invalid tool arguments exit 2. Auth-status/settings inspection still reports its status without failing the command. Framework help and option parsing errors retain Typer's normal text format. JSON profile selection requires an explicit profile name and never prompts.
+```bash
+canvas assignments submissions confirm <token>
+```
+
+To submit later instead, replace `--now` with `--at 2026-10-20T23:00:00-04:00` or `--minutes-before-due 30`. Scheduled submissions run in the background on macOS, even if the terminal is closed. The Mac does need to be awake at submit time; add `--caffeinate` when you confirm to keep it awake until then. To manage them:
+
+- **List them:** `canvas assignments submissions scheduled`
+- **Cancel one:** `canvas assignments submissions cancel <job>`
+
+## Scripts and agents
+
+In a terminal you get readable output. When the output is piped or redirected, you get compact JSON instead. To force one or the other, use `--output pretty` or `--output json` before the command, or set `CANVAS_OUTPUT=json`.
+
+When a command fails, it exits with status 1, or 2 if the arguments were bad. In JSON mode, the error comes as `{"error": ..., "message": ...}`. `canvas auth-status` is the exception: it always succeeds and reports the problem in its output.
+
+To call any tool directly with JSON arguments:
+
+```bash
+canvas tool list
+canvas tool run list_courses --args '{"limit": 5}'
+```
 
 ## MCP
 
-Optional. Prefer the CLI unless a client needs MCP.
-
-```bash
-canvas-mcp --transport stdio
-canvas-mcp --transport http --host 127.0.0.1 --port 8000
-```
+Use the CLI unless your client only speaks MCP. To add the server to a client:
 
 ```json
 {
@@ -73,10 +96,6 @@ canvas-mcp --transport http --host 127.0.0.1 --port 8000
 }
 ```
 
-The MCP server exposes `download_course_file` for the existing local-file
-download workflow. It also exposes `read_course_file`, which returns the file
-as an MCP embedded binary resource so compatible chat clients can inspect it
-inline. Inline reads default to a 25 MB limit (maximum 50 MB); larger files
-should use `download_course_file`.
-Attachment display depends on the MCP client; this does not guarantee a native
-chat attachment. This tool returns an embedded resource, not a ResourceLink.
+For HTTP, run `canvas-mcp --transport http --host 127.0.0.1 --port 8000`. Tools that only read are marked read-only, so clients can choose to skip their approval prompt. Submitting and cancelling are marked destructive.
+
+The MCP server also has `read_course_file`, which hands a course file straight to the chat model, so it can read a PDF without a separate download. It's limited to 25 MB by default (50 MB max); for bigger files or a local copy, use `download_course_file`. Whether the file shows up as an attachment depends on your client.

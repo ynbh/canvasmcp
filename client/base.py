@@ -26,6 +26,11 @@ _CANVAS_EXCEPTION_STATUS: tuple[tuple[type[CanvasException], int], ...] = (
 )
 
 
+class _CanvasDictItem:
+    def __init__(self, _: Any, attributes: dict[str, Any]) -> None:
+        self.__dict__.update(attributes)
+
+
 def _canvas_exception_for_status(status_code: int) -> CanvasException:
     for exc_type, code in _CANVAS_EXCEPTION_STATUS:
         if code == status_code:

@@ -15,6 +15,9 @@ def resolve_canvas_base_url(
     configured = os.getenv("CANVAS_BASE_URL", "").strip()
     if configured:
         return configured
+    if os.getenv("CANVAS_COOKIE_BROWSER", "chrome").strip().lower() == "firefox":
+        from .errors import CanvasAPIError
+        raise CanvasAPIError("Set CANVAS_BASE_URL when using Firefox cookies.")
     detected = detect_canvas_base_url(
         profile_path=resolve_chrome_profile_path(
             profile_name=profile_name,

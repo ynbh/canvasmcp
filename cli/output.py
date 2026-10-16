@@ -38,6 +38,8 @@ FIELD_ORDER = {
     "items": "id title type due_at html_url",
     "todo": "type course_id assignment_id title due_at points",
     "entries": "id user_id created_at message replies",
+    "conversations": "id subject workflow_state last_message_at context_name participants last_message_preview",
+    "messages": "id created_at author body attachments",
     "submissions": "id assignment_id assignment_name workflow_state attempt score grade submitted_at missing late excused",
     "modules": "id name state unlock_at items_count items",
     "assignment_groups": "id name group_weight rules assignments",

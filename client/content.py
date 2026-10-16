@@ -6,12 +6,7 @@ from typing import Any
 from canvasapi import Canvas
 
 from auth import CanvasAPIError
-from .base import MAX_PER_PAGE, _canvas_exception_for_status
-
-
-class _CanvasDictItem:
-    def __init__(self, _: Any, attributes: dict[str, Any]) -> None:
-        self.__dict__.update(attributes)
+from .base import MAX_PER_PAGE, _CanvasDictItem, _canvas_exception_for_status
 
 
 class CanvasContentMixin:
