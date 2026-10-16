@@ -26,6 +26,13 @@ _CANVAS_EXCEPTION_STATUS: tuple[tuple[type[CanvasException], int], ...] = (
 )
 
 
+def _canvas_exception_for_status(status_code: int) -> CanvasException:
+    for exc_type, code in _CANVAS_EXCEPTION_STATUS:
+        if code == status_code:
+            return exc_type(f"status code {status_code}")
+    return CanvasException(f"Encountered an error: status code {status_code}")
+
+
 def _status_code_for_canvas_exception(exc: CanvasException) -> int | None:
     for exc_type, status_code in _CANVAS_EXCEPTION_STATUS:
         if isinstance(exc, exc_type):

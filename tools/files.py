@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import base64
-from pathlib import Path
-import tempfile
 from typing import Any
 from urllib.parse import quote
 
@@ -121,12 +119,14 @@ def read_course_file(
     except (TypeError, ValueError):
         max_size_mb = 25
     max_bytes = max_size_mb * 1024 * 1024
-    client = canvas_client()
-    file_info = client.get_file(course_id=course_id, file_id=file_id)
-    size = file_info.get("size")
-    if isinstance(size, int) and size > max_bytes:
+    file_info, data = canvas_client().read_file_bytes(
+        course_id=course_id, file_id=file_id, max_bytes=max_bytes
+    )
+    if data is None:
+        size = file_info.get("size")
+        size_text = f"{size} bytes, " if isinstance(size, int) and size > max_bytes else ""
         raise ValueError(
-            f"File is {size} bytes, above the {max_size_mb} MB inline limit. "
+            f"File is {size_text}above the {max_size_mb} MB inline limit. "
             "Use download_course_file instead."
         )
 
@@ -134,22 +134,6 @@ def read_course_file(
         file_info.get("display_name") or file_info.get("filename") or f"file_{file_id}"
     )
     content_type = str(file_info.get("content-type") or file_info.get("content_type") or "application/octet-stream")
-    with tempfile.TemporaryDirectory(prefix="canvasmcp-inline-") as temp_dir:
-        path = Path(temp_dir) / "canvas-file"
-        client.download_file(
-            course_id=course_id,
-            file_id=file_id,
-            destination_path=str(path),
-        )
-        # Bound memory even when Canvas metadata is missing or inaccurate.
-        with path.open("rb") as downloaded_file:
-            data = downloaded_file.read(max_bytes + 1)
-
-    if len(data) > max_bytes:
-        raise ValueError(
-            f"File is above the {max_size_mb} MB inline limit. "
-            "Use download_course_file instead."
-        )
 
     uri = f"canvas-file://courses/{quote(course_id)}/files/{quote(file_id)}/{quote(display_name)}"
     return ToolResult(

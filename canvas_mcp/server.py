@@ -5,7 +5,6 @@ from inspect import Parameter, Signature
 from typing import Any
 
 from fastmcp import FastMCP
-from fastmcp.tools import ToolResult
 
 from auth import ensure_canvas_auth_configured
 from specs.registry import TOOL_SPECS, dispatch_tool_call
@@ -75,21 +74,16 @@ for tool_spec in TOOL_SPECS:
     _register_tool(tool_spec)
 
 
-@mcp.tool(
+mcp.tool(
+    read_course_file,
     name="read_course_file",
-    annotations={"readOnlyHint": True, "destructiveHint": False, "openWorldHint": False},
+    annotations={"readOnlyHint": True, "destructiveHint": False},
     description=(
         "Return a Canvas course file inline as an MCP embedded binary resource. "
         "Use for files you want the chat model to inspect; for large files or "
         "a persistent local copy, use download_course_file."
     ),
 )
-def read_course_file_tool(
-    course_id: str,
-    file_id: str,
-    max_size_mb: int = 25,
-) -> ToolResult:
-    return read_course_file(course_id, file_id, max_size_mb)
 
 
 def _build_parser() -> argparse.ArgumentParser:

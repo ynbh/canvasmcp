@@ -6,7 +6,7 @@ from typing import Any
 from canvasapi import Canvas
 
 from auth import CanvasAPIError
-from .base import MAX_PER_PAGE
+from .base import MAX_PER_PAGE, _canvas_exception_for_status
 
 
 class _CanvasDictItem:
@@ -184,6 +184,38 @@ class CanvasContentMixin:
             _load,
             f"download file {file_id} for course {course_id}",
         )
+
+    def read_file_bytes(
+        self,
+        *,
+        course_id: str,
+        file_id: str,
+        max_bytes: int,
+    ) -> tuple[dict[str, Any], bytes | None]:
+        """Return file metadata and its bytes, or None once the file passes max_bytes."""
+
+        def _load(canvas: Canvas) -> tuple[dict[str, Any], bytes | None]:
+            file_info = canvas.get_course(course_id).get_file(file_id)
+            info = self._item_to_dict(file_info)
+            size = info.get("size")
+            if isinstance(size, int) and size > max_bytes:
+                return info, None
+            requester = getattr(canvas, "_Canvas__requester")
+            with requester._session.get(
+                file_info.url,
+                headers={"Authorization": f"Bearer {requester.access_token}"},
+                stream=True,
+            ) as response:
+                if response.status_code >= 400:
+                    raise _canvas_exception_for_status(response.status_code)
+                data = bytearray()
+                for chunk in response.iter_content(chunk_size=64 * 1024):
+                    data += chunk
+                    if len(data) > max_bytes:
+                        return info, None
+            return info, bytes(data)
+
+        return self._call_canvas(_load, f"read file {file_id} for course {course_id}")
 
     def list_folders(self, *, course_id: str, limit: int = 150) -> list[dict[str, Any]]:
         def _load(canvas: Canvas) -> list[dict[str, Any]]:
