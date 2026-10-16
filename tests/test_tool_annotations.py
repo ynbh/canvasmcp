@@ -4,7 +4,7 @@ import asyncio
 
 from canvas_mcp.server import mcp
 
-# Tools that change something in Canvas. Chat clients ask before running these; everything else is read-only.
+# Tools that change something in Canvas; everything else is read-only.
 WRITE_TOOLS = {"confirm_assignment_submission", "cancel_scheduled_submission"}
 
 
@@ -30,6 +30,15 @@ def test_only_canvas_writes_need_approval():
             assert read_only is False and destructive is True, tool.name
         else:
             assert read_only is True and destructive is False, tool.name
+
+
+def test_open_world_hint_is_not_closed():
+    for tool in _tools():
+        hints = tool.annotations
+        open_world = getattr(hints, "open_world_hint", None)
+        if open_world is None:
+            open_world = getattr(hints, "openWorldHint", None)
+        assert open_world is not False, tool.name
 
 
 def test_every_write_tool_exists():

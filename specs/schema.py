@@ -12,7 +12,7 @@ class ToolSpec:
     description: str
     parameters: dict[str, Any]
     handler: ToolHandler
-    # True only for tools that change nothing in Canvas; chat clients skip the approval prompt for these
+    # True only for tools that change nothing in Canvas (local cache writes are allowed)
     read_only: bool = False
 
 

@@ -52,11 +52,8 @@ def _signature_for_spec(spec: ToolSpec) -> Signature:
 
 
 def _tool_annotations(spec: ToolSpec) -> dict[str, bool]:
-    # Read-only tools run without an approval prompt in clients like ChatGPT; anything that
-    # changes Canvas (submitting, cancelling and deleting uploads) still asks every time.
-    if spec.read_only:
-        return {"readOnlyHint": True, "destructiveHint": False, "openWorldHint": False}
-    return {"readOnlyHint": False, "destructiveHint": True, "openWorldHint": True}
+    # openWorldHint stays at its default: every Canvas tool talks to a remote, multi-user system.
+    return {"readOnlyHint": spec.read_only, "destructiveHint": not spec.read_only}
 
 
 def _register_tool(spec: ToolSpec) -> None:
