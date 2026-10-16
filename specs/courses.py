@@ -19,6 +19,7 @@ from specs.schema import ToolSpec, tool_spec
 COURSE_TOOL_SPECS: list[ToolSpec] = [
     tool_spec(
         name="get_course_overview",
+        read_only=True,
         description="Get overview metadata for a course.",
         handler=get_course_overview,
         properties={"course_id": {"type": "string"}},
@@ -26,6 +27,7 @@ COURSE_TOOL_SPECS: list[ToolSpec] = [
     ),
     tool_spec(
         name="get_course_syllabus",
+        read_only=True,
         description="Get syllabus metadata and optional syllabus body.",
         handler=get_course_syllabus,
         properties={
@@ -37,6 +39,7 @@ COURSE_TOOL_SPECS: list[ToolSpec] = [
     ),
     tool_spec(
         name="list_course_pages",
+        read_only=True,
         description="List pages in a course.",
         handler=list_course_pages,
         properties={
@@ -49,6 +52,7 @@ COURSE_TOOL_SPECS: list[ToolSpec] = [
     ),
     tool_spec(
         name="canvas_get_page",
+        read_only=True,
         description="Get a course wiki page by page URL slug or page ID.",
         handler=canvas_get_page,
         properties={
@@ -60,6 +64,7 @@ COURSE_TOOL_SPECS: list[ToolSpec] = [
     ),
     tool_spec(
         name="list_course_tabs",
+        read_only=True,
         description="List navigation tabs in a course (left sidebar entries).",
         handler=list_course_tabs,
         properties={
@@ -70,6 +75,7 @@ COURSE_TOOL_SPECS: list[ToolSpec] = [
     ),
     tool_spec(
         name="get_course_tab",
+        read_only=True,
         description="Get one course navigation tab by id and optionally resolve/fetch the tab target.",
         handler=get_course_tab,
         properties={
@@ -81,6 +87,7 @@ COURSE_TOOL_SPECS: list[ToolSpec] = [
     ),
     tool_spec(
         name="list_course_people",
+        read_only=True,
         description="List users in a course.",
         handler=list_course_people,
         properties={
@@ -100,6 +107,7 @@ COURSE_TOOL_SPECS: list[ToolSpec] = [
     ),
     tool_spec(
         name="list_modules",
+        read_only=True,
         description="List modules for a course, optionally including module items.",
         handler=list_modules,
         properties={
@@ -114,6 +122,7 @@ COURSE_TOOL_SPECS: list[ToolSpec] = [
     ),
     tool_spec(
         name="get_course_grade_summary",
+        read_only=True,
         description="Get grade summary and group-level performance for a course.",
         handler=get_course_grade_summary,
         properties={"course_id": {"type": "string"}, "student_id": {"type": "string"}},
@@ -121,6 +130,7 @@ COURSE_TOOL_SPECS: list[ToolSpec] = [
     ),
     tool_spec(
         name="resolve_canvas_url",
+        read_only=True,
         description="Resolve a Canvas URL into object identifiers and optional details.",
         handler=resolve_canvas_url,
         properties={"url": {"type": "string"}, "fetch_details": {"type": "boolean"}},
@@ -128,6 +138,7 @@ COURSE_TOOL_SPECS: list[ToolSpec] = [
     ),
     tool_spec(
         name="get_course_context_snapshot",
+        read_only=True,
         description="Get an aggregated context snapshot for a course.",
         handler=get_course_context_snapshot,
         properties={

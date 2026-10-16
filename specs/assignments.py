@@ -19,6 +19,7 @@ from specs.schema import ToolSpec, tool_spec
 ASSIGNMENT_TOOL_SPECS: list[ToolSpec] = [
     tool_spec(
         name="list_course_assignments",
+        read_only=True,
         description="List assignments for a course.",
         handler=list_course_assignments,
         properties={
@@ -35,6 +36,7 @@ ASSIGNMENT_TOOL_SPECS: list[ToolSpec] = [
     ),
     tool_spec(
         name="get_assignment_details",
+        read_only=True,
         description=(
             "Get full details for a single assignment in a course, including rubric "
             "fields when Canvas returns them."
@@ -49,6 +51,7 @@ ASSIGNMENT_TOOL_SPECS: list[ToolSpec] = [
     ),
     tool_spec(
         name="get_assignment_rubric",
+        read_only=True,
         description="Get the rubric criteria/settings for a single assignment.",
         handler=get_assignment_rubric,
         properties={
@@ -63,6 +66,7 @@ ASSIGNMENT_TOOL_SPECS: list[ToolSpec] = [
     ),
     tool_spec(
         name="list_assignment_groups",
+        read_only=True,
         description="List assignment groups for a course.",
         handler=list_assignment_groups,
         properties={
@@ -75,6 +79,7 @@ ASSIGNMENT_TOOL_SPECS: list[ToolSpec] = [
     ),
     tool_spec(
         name="list_course_submissions",
+        read_only=True,
         description="List submissions for a student in a course.",
         handler=list_course_submissions,
         properties={
@@ -96,6 +101,7 @@ ASSIGNMENT_TOOL_SPECS: list[ToolSpec] = [
     ),
     tool_spec(
         name="install_assignment_submission_files",
+        read_only=True,
         description=(
             "Download attachment files from the current user's submission for one assignment."
         ),
@@ -109,6 +115,7 @@ ASSIGNMENT_TOOL_SPECS: list[ToolSpec] = [
     ),
     tool_spec(
         name="preview_assignment_submission",
+        read_only=True,
         description=(
             "Preview an assignment submit or scheduled submit. Does not upload, "
             "submit, or install launchd. Confirm with preview_token."
@@ -157,6 +164,7 @@ ASSIGNMENT_TOOL_SPECS: list[ToolSpec] = [
     ),
     tool_spec(
         name="list_scheduled_submissions",
+        read_only=True,
         description="List locally scheduled assignment submissions.",
         handler=list_scheduled_submissions,
         properties={
@@ -175,6 +183,7 @@ ASSIGNMENT_TOOL_SPECS: list[ToolSpec] = [
     ),
     tool_spec(
         name="get_scheduled_submission",
+        read_only=True,
         description="Get one locally scheduled assignment submission job.",
         handler=get_scheduled_submission,
         properties={"job_id": {"type": "string"}},

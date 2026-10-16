@@ -7,11 +7,13 @@ from specs.schema import ToolSpec, tool_spec
 CORE_TOOL_SPECS: list[ToolSpec] = [
     tool_spec(
         name="get_today",
+        read_only=True,
         description="Get today's date in ISO format.",
         handler=get_today,
     ),
     tool_spec(
         name="list_courses",
+        read_only=True,
         description="List Canvas courses for the current user.",
         handler=list_courses,
         properties={
@@ -22,6 +24,7 @@ CORE_TOOL_SPECS: list[ToolSpec] = [
     ),
     tool_spec(
         name="resolve_course",
+        read_only=True,
         description="Resolve a natural-language course query to likely Canvas courses.",
         handler=resolve_course,
         properties={

@@ -15,6 +15,7 @@ from specs.schema import ToolSpec, tool_spec
 CONTENT_TOOL_SPECS: list[ToolSpec] = [
     tool_spec(
         name="list_discussion_topics",
+        read_only=True,
         description="List discussion topics in a course.",
         handler=list_discussion_topics,
         properties={
@@ -30,6 +31,7 @@ CONTENT_TOOL_SPECS: list[ToolSpec] = [
     ),
     tool_spec(
         name="get_discussion_entries",
+        read_only=True,
         description="Get discussion entries for a topic in a course.",
         handler=get_discussion_entries,
         properties={
@@ -43,6 +45,7 @@ CONTENT_TOOL_SPECS: list[ToolSpec] = [
     ),
     tool_spec(
         name="list_course_files",
+        read_only=True,
         description="List files for a course.",
         handler=list_course_files,
         properties={
@@ -59,6 +62,7 @@ CONTENT_TOOL_SPECS: list[ToolSpec] = [
     ),
     tool_spec(
         name="download_course_file",
+        read_only=True,
         description="Download a course file into local temp storage and return the local path.",
         handler=download_course_file,
         properties={
@@ -70,6 +74,7 @@ CONTENT_TOOL_SPECS: list[ToolSpec] = [
     ),
     tool_spec(
         name="list_course_folders",
+        read_only=True,
         description="List folders for a course.",
         handler=list_course_folders,
         properties={
@@ -80,6 +85,7 @@ CONTENT_TOOL_SPECS: list[ToolSpec] = [
     ),
     tool_spec(
         name="list_announcements",
+        read_only=True,
         description="List announcements for one or more courses.",
         handler=list_announcements,
         properties={
@@ -93,6 +99,7 @@ CONTENT_TOOL_SPECS: list[ToolSpec] = [
     ),
     tool_spec(
         name="list_todo_items",
+        read_only=True,
         description="List current user's Canvas To Do items.",
         handler=list_todo_items,
         properties={

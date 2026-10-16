@@ -51,6 +51,11 @@ def _signature_for_spec(spec: ToolSpec) -> Signature:
     return Signature(parameters=parameters, return_annotation=dict[str, Any])
 
 
+def _tool_annotations(spec: ToolSpec) -> dict[str, bool]:
+    # openWorldHint stays at its default: every Canvas tool talks to a remote, multi-user system.
+    return {"readOnlyHint": spec.read_only, "destructiveHint": not spec.read_only}
+
+
 def _register_tool(spec: ToolSpec) -> None:
     def _tool(**kwargs: Any) -> dict[str, Any]:
         args = {key: value for key, value in kwargs.items() if value is not None}
@@ -66,7 +71,7 @@ def _register_tool(spec: ToolSpec) -> None:
     _tool.__doc__ = spec.description
     _tool.__signature__ = signature
     _tool.__annotations__ = annotations
-    mcp.tool(_tool, name=spec.name, description=spec.description)
+    mcp.tool(_tool, name=spec.name, description=spec.description, annotations=_tool_annotations(spec))
 
 
 for tool_spec in TOOL_SPECS:
