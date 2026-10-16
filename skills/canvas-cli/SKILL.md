@@ -1,6 +1,6 @@
 ---
 name: canvas-cli
-description: Use the local `canvas` CLI for Canvas LMS workflows. Trigger when you need to find a course, inspect modules/assignments/discussions/files/pages/people/grades/rubrics, submit or schedule an assignment, or verify Canvas session status from the terminal.
+description: Use the local `canvas` CLI for Canvas LMS workflows. Trigger when you need to find a course, inspect modules/assignments/discussions/files/pages/people/grades/rubrics/inbox messages, submit or schedule an assignment, or verify Canvas session status from the terminal.
 ---
 
 # Canvas CLI Agent Instructions
@@ -207,6 +207,22 @@ Best practice:
 
 - Use todo for the user's current Canvas To Do list and cross-course upcoming work.
 - Use assignment APIs for full assignment details; todo entries are summaries.
+
+## Inbox
+
+```bash
+canvas inbox list
+canvas inbox list --scope unread
+canvas inbox list --scope sent --course <course_id>
+canvas inbox show <conversation_id>
+```
+
+Best practice:
+
+- Inbox access is read-only: listing or showing a conversation never marks it as read, and there is no send or reply.
+- Scopes are `inbox` (default), `unread`, `starred`, `sent`, and `archived`.
+- `inbox show` returns messages newest first. A message over the length limit has `body_truncated: true`.
+- Attachments are listed by name, type, size, and ID only, without download links.
 
 ## URL Lookup
 
