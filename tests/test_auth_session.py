@@ -30,7 +30,7 @@ def test_firefox_auth_verifies_without_reading_chrome():
         status = get_auth_status()
     assert status["auth_verified"] is True
     assert status["auth_mode"] == "firefox-session"
-    firefox.assert_called_once_with(domain_name="canvas.example.test")
+    firefox.assert_called_once_with(domain_name="example.test")
     chrome.assert_not_called()
     discovery.assert_not_called()
 
@@ -47,6 +47,39 @@ def test_firefox_rejects_wrong_domain_and_expired_cookies(domain, expires):
     ):
         with pytest.raises(CanvasAPIError, match="Log into"):
             read_chrome_session_cookies("https://canvas.example.test")
+
+
+def test_firefox_reads_parent_domain_cookies_from_sqlite(tmp_path):
+    import sqlite3
+
+    import browser_cookie3
+
+    cookie_file = tmp_path / "cookies.sqlite"
+    with sqlite3.connect(cookie_file) as con:
+        con.execute(
+            "create table moz_cookies (host text, path text, isSecure int, expiry int,"
+            " name text, value text, isHttpOnly int)"
+        )
+        con.executemany(
+            "insert into moz_cookies values (?, '/', 1, 4102444800, ?, ?, 1)",
+            [
+                (".example.test", "canvas_session", "parent-session"),
+                (".example.test", "_csrf_token", "parent-csrf"),
+                (".other.example.test", "canvas_session", "sibling-session"),
+                (".other.example.test", "_csrf_token", "sibling-csrf"),
+            ],
+        )
+    real_firefox = browser_cookie3.firefox
+    with (
+        mock.patch.dict(os.environ, {"CANVAS_COOKIE_BROWSER": "firefox",
+            "CANVAS_SESSION_COOKIE": "", "CANVAS_CSRF_TOKEN": ""}),
+        mock.patch(
+            "auth.session.browser_cookie3.firefox",
+            lambda **kw: real_firefox(cookie_file=str(cookie_file), **kw),
+        ),
+    ):
+        cookies = read_chrome_session_cookies("https://canvas.school.example.test")
+    assert cookies == ("parent-session", "parent-csrf")
 
 
 def test_cookie_env_bypasses_chrome_decryption():

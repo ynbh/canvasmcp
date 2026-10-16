@@ -183,6 +183,21 @@ def _matching_domains(hostname: str, domains: Iterable[str]) -> list[str]:
     )
 
 
+def cookie_query_domain(hostname: str) -> str:
+    # browser_cookie3 filters with LIKE '%domain%', so a query for the host itself misses
+    # cookies stored on its ancestors; the last two labels match every ancestor.
+    return ".".join(_normalize_cookie_domain(hostname).split(".")[-2:])
+
+
+def select_canvas_session(hostname: str, cookies: Iterable[Cookie]) -> tuple[str, str] | None:
+    grouped = _iter_canvas_cookies(cookies)
+    matches = _matching_domains(hostname, _domains_with_complete_canvas_session(grouped))
+    if not matches:
+        return None
+    values = grouped[matches[0]]
+    return values["canvas_session"], values["_csrf_token"]
+
+
 def _iter_canvas_cookies(cookies: Iterable[Cookie]) -> dict[str, dict[str, str]]:
     grouped: dict[str, dict[str, str]] = defaultdict(dict)
     for cookie in cookies:
@@ -213,21 +228,11 @@ def read_chrome_cookies(
     profile_path: str | None = None,
 ) -> tuple[str, str] | None:
     if base_url:
-        domain_name = _domain_from_base_url(base_url)
-        search_domains = [domain_name]
-        if "." in domain_name:
-            search_domains.append(domain_name.split(".", 1)[1])
-        for search_domain in search_domains:
-            grouped = _iter_canvas_cookies(
-                _chrome_cookies(domain_name=search_domain, profile_path=profile_path)
-            )
-            matches = _matching_domains(
-                domain_name, _domains_with_complete_canvas_session(grouped)
-            )
-            if matches:
-                values = grouped[matches[0]]
-                return values["canvas_session"], values["_csrf_token"]
-        return None
+        hostname = _domain_from_base_url(base_url)
+        cookies = _chrome_cookies(
+            domain_name=cookie_query_domain(hostname), profile_path=profile_path
+        )
+        return select_canvas_session(hostname, cookies)
 
     grouped = _iter_canvas_cookies(_chrome_cookies(profile_path=profile_path))
     complete_domains = _domains_with_complete_canvas_session(grouped)

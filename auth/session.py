@@ -5,7 +5,12 @@ from urllib.parse import unquote, urlparse
 
 import browser_cookie3
 
-from .chrome_cookies import list_canvas_cookie_domains, read_chrome_cookies
+from .chrome_cookies import (
+    cookie_query_domain,
+    list_canvas_cookie_domains,
+    read_chrome_cookies,
+    select_canvas_session,
+)
 from .errors import CanvasAPIError
 from .profiles import resolve_chrome_profile_path
 
@@ -24,20 +29,12 @@ def _read_firefox_session(base_url: str | None) -> CanvasSessionCookies:
     if not hostname:
         raise CanvasAPIError("Set CANVAS_BASE_URL when using Firefox cookies.")
     try:
-        jar = browser_cookie3.firefox(domain_name=hostname)
+        jar = browser_cookie3.firefox(domain_name=cookie_query_domain(hostname))
     except Exception as exc:
         raise CanvasAPIError("Could not read Firefox Canvas cookies.") from exc
-    grouped: dict[str, dict[str, str]] = {}
-    for cookie in jar:
-        domain = cookie.domain.lstrip(".").lower()
-        if (hostname == domain or hostname.endswith("." + domain)) and cookie.name in {
-            "canvas_session", "_csrf_token"
-        } and cookie.value and not cookie.is_expired():
-            grouped.setdefault(domain, {})[cookie.name] = cookie.value
-    for domain in sorted(grouped, key=len, reverse=True):
-        values = grouped[domain]
-        if "canvas_session" in values and "_csrf_token" in values:
-            return values["canvas_session"], values["_csrf_token"]
+    session = select_canvas_session(hostname, (c for c in jar if not c.is_expired()))
+    if session:
+        return session
     raise CanvasAPIError(f"Log into {base_url} in Firefox, then retry.")
 
 
