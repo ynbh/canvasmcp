@@ -97,3 +97,5 @@ Use the CLI unless your client only speaks MCP. To add the server to a client:
 ```
 
 For HTTP, run `canvas-mcp --transport http --host 127.0.0.1 --port 8000`. Tools that only read are marked read-only, so clients can choose to skip their approval prompt. Submitting and cancelling are marked destructive.
+
+The MCP server also has `read_course_file`, which hands a course file straight to the chat model, so it can read a PDF without a separate download. It's limited to 25 MB by default (50 MB max); for bigger files or a local copy, use `download_course_file`. Whether the file shows up as an attachment depends on your client.

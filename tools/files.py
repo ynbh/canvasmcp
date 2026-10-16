@@ -1,6 +1,15 @@
 from __future__ import annotations
 
+import base64
 from typing import Any
+from urllib.parse import quote
+
+from fastmcp.tools import ToolResult
+from mcp.types import (
+    BlobResourceContents,
+    EmbeddedResource,
+    TextContent,
+)
 
 from tools.common import (
     canvas_client,
@@ -90,6 +99,59 @@ def download_course_file(args: dict[str, Any]) -> dict[str, Any]:
         "content_type": downloaded.get("content_type"),
         "already_present": False,
     }
+
+
+def read_course_file(
+    course_id: str,
+    file_id: str,
+    max_size_mb: int = 25,
+) -> ToolResult:
+    """Return a Canvas file inline as an MCP embedded binary resource."""
+    course_id = str(course_id).strip()
+    file_id = str(file_id).strip()
+    if not course_id:
+        raise ValueError("course_id is required")
+    if not file_id:
+        raise ValueError("file_id is required")
+
+    try:
+        max_size_mb = max(1, min(int(max_size_mb), 50))
+    except (TypeError, ValueError):
+        max_size_mb = 25
+    max_bytes = max_size_mb * 1024 * 1024
+    file_info, data = canvas_client().read_file_bytes(
+        course_id=course_id, file_id=file_id, max_bytes=max_bytes
+    )
+    if data is None:
+        size = file_info.get("size")
+        size_text = f"{size} bytes, " if isinstance(size, int) and size > max_bytes else ""
+        raise ValueError(
+            f"File is {size_text}above the {max_size_mb} MB inline limit. "
+            "Use download_course_file instead."
+        )
+
+    display_name = str(
+        file_info.get("display_name") or file_info.get("filename") or f"file_{file_id}"
+    )
+    content_type = str(file_info.get("content-type") or file_info.get("content_type") or "application/octet-stream")
+
+    uri = f"canvas-file://courses/{quote(course_id)}/files/{quote(file_id)}/{quote(display_name)}"
+    return ToolResult(
+        content=[
+            TextContent(
+                type="text",
+                text=f"Canvas file: {display_name} ({content_type}, {len(data)} bytes).",
+            ),
+            EmbeddedResource(
+                type="resource",
+                resource=BlobResourceContents(
+                    uri=uri,
+                    mimeType=content_type,
+                    blob=base64.b64encode(data).decode("ascii"),
+                ),
+            ),
+        ]
+    )
 
 
 def list_course_folders(args: dict[str, Any]) -> dict[str, Any]:
