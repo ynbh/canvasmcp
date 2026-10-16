@@ -161,6 +161,48 @@ class TestGetInboxConversationTool:
         assert "SECRET" not in repr(result)
 
 
+def test_keeps_forwarded_messages_and_media_comments(mock_client):
+    from tools import get_inbox_conversation
+
+    mock_client.get_conversation.return_value = {
+        "id": 7,
+        "participants": [{"id": 1, "name": "Prof"}, {"id": 3, "name": "TA"}],
+        "messages": [
+            {
+                "id": 12,
+                "author_id": 1,
+                "body": "",
+                "media_comment": {
+                    "media_id": "0_abc",
+                    "media_type": "audio",
+                    "display_name": "note.m4a",
+                    "content-type": "audio/mp4",
+                    "url": "https://canvas.example.test/media?verifier=SECRET",
+                },
+                "forwarded_messages": [
+                    {
+                        "id": 5,
+                        "author_id": 3,
+                        "body": "Submit Friday",
+                        "forwarded_messages": [{"id": 4, "author_id": 1, "body": "Original"}],
+                    }
+                ],
+            }
+        ],
+    }
+    message = get_inbox_conversation({"conversation_id": "7"})["messages"][0]
+    assert message["media_comment"] == {
+        "media_id": "0_abc",
+        "media_type": "audio",
+        "display_name": "note.m4a",
+        "content_type": "audio/mp4",
+    }
+    forwarded = message["forwarded_messages"][0]
+    assert forwarded["author"] == "TA" and forwarded["body"] == "Submit Friday"
+    assert forwarded["forwarded_messages"][0]["body"] == "Original"
+    assert "SECRET" not in repr(message)
+
+
 def test_long_message_bodies_say_they_were_truncated(mock_client):
     from tools import get_inbox_conversation
     from tools.common import DEFAULT_HTML_CHAR_LIMIT

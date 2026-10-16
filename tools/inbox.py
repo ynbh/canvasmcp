@@ -98,7 +98,7 @@ def _map_message(message: dict[str, Any], names: dict[str, str]) -> dict[str, An
         "body": truncate_html(body),
         "body_truncated": len(body or "") > DEFAULT_HTML_CHAR_LIMIT,
         "generated": bool(message.get("generated", False)),
-        # Names and IDs only: Canvas attachment URLs embed an access key.
+        # Names and IDs only: Canvas attachment and media URLs embed an access key.
         "attachments": [
             {
                 "id": str(attachment.get("id", "")),
@@ -108,4 +108,19 @@ def _map_message(message: dict[str, Any], names: dict[str, str]) -> dict[str, An
             }
             for attachment in message.get("attachments") or []
         ],
+        "media_comment": _map_media_comment(message.get("media_comment")),
+        "forwarded_messages": [
+            _map_message(forwarded, names) for forwarded in message.get("forwarded_messages") or []
+        ],
+    }
+
+
+def _map_media_comment(media: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not media:
+        return None
+    return {
+        "media_id": media.get("media_id"),
+        "media_type": media.get("media_type"),
+        "display_name": media.get("display_name"),
+        "content_type": media.get("content-type") or media.get("content_type"),
     }

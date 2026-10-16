@@ -5,8 +5,7 @@ from typing import Any
 from canvasapi import Canvas
 from canvasapi.util import combine_kwargs
 
-from .base import MAX_PER_PAGE
-from .content import _CanvasDictItem
+from .base import MAX_PER_PAGE, _CanvasDictItem
 
 
 class CanvasInboxMixin:
