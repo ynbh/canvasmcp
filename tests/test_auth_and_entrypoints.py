@@ -60,11 +60,12 @@ class TestReadChromeCookies:
             cookie("canvas_session", "session123", ".umd.instructure.com"),
             cookie("_csrf_token", "csrf456", ".umd.instructure.com"),
         ]
-        with mock.patch("auth.chrome_cookies.browser_cookie3.chrome", return_value=cookies):
+        with mock.patch("auth.chrome_cookies.browser_cookie3.chrome", return_value=cookies) as chrome:
             assert read_chrome_cookies("https://umd.instructure.com") == (
                 "session123",
                 "csrf456",
             )
+        assert chrome.call_args.kwargs["domain_name"] == "instructure.com"
 
     def test_reads_parent_domain_for_specific_canvas_host(self):
         from auth.chrome_cookies import read_chrome_cookies
@@ -76,10 +77,36 @@ class TestReadChromeCookies:
             cookie("canvas_session", "session123", ".instructure.com"),
             cookie("_csrf_token", "csrf456", ".instructure.com"),
         ]
-        with mock.patch("auth.chrome_cookies.browser_cookie3.chrome", return_value=cookies):
+        with mock.patch("auth.chrome_cookies.browser_cookie3.chrome", return_value=cookies) as chrome:
             assert read_chrome_cookies("https://umd.instructure.com") == (
                 "session123",
                 "csrf456",
+            )
+        chrome.assert_called_once()
+        assert chrome.call_args.kwargs["domain_name"] == "instructure.com"
+
+    def test_reads_grandparent_domain_and_prefers_most_specific(self):
+        from auth.chrome_cookies import read_chrome_cookies
+
+        def cookie(name, value, domain):
+            return type("Cookie", (), {"name": name, "value": value, "domain": domain})()
+
+        grandparent = [
+            cookie("canvas_session", "root", ".example.test"),
+            cookie("_csrf_token", "root-csrf", ".example.test"),
+        ]
+        specific = [
+            cookie("canvas_session", "school", ".school.example.test"),
+            cookie("_csrf_token", "school-csrf", ".school.example.test"),
+        ]
+        with mock.patch("auth.chrome_cookies.browser_cookie3.chrome", return_value=grandparent):
+            assert read_chrome_cookies("https://canvas.school.example.test") == ("root", "root-csrf")
+        with mock.patch(
+            "auth.chrome_cookies.browser_cookie3.chrome", return_value=grandparent + specific
+        ):
+            assert read_chrome_cookies("https://canvas.school.example.test") == (
+                "school",
+                "school-csrf",
             )
 
     def test_detect_canvas_base_url_requires_unique_match(self):
@@ -304,7 +331,7 @@ class TestAuthPriority:
         with (
             mock.patch.dict(os.environ, {}, clear=True),
             mock.patch(
-                "auth.chrome_cookies.detect_canvas_base_url",
+                "auth.resolve.detect_canvas_base_url",
                 return_value="https://umd.instructure.com",
             ),
         ):
@@ -339,7 +366,7 @@ class TestCreateCanvasClientFromEnv:
     def test_chrome_cookies_sets_cookie_provider(self):
         cookies = ("session_val", "csrf_val")
         with (
-            mock.patch("auth.resolve.resolve_canvas_base_url", return_value="https://umd.instructure.com"),
+            mock.patch("client.resolve_canvas_base_url", return_value="https://umd.instructure.com"),
             mock.patch("client.read_chrome_session_cookies", return_value=cookies),
         ):
             from client import create_canvas_client_from_env
@@ -351,7 +378,7 @@ class TestCreateCanvasClientFromEnv:
 
     def test_raises_without_chrome_cookies(self):
         with (
-            mock.patch("auth.resolve.resolve_canvas_base_url", return_value="https://umd.instructure.com"),
+            mock.patch("client.resolve_canvas_base_url", return_value="https://umd.instructure.com"),
             mock.patch("client.read_chrome_session_cookies", return_value=None),
         ):
             from auth import CanvasAPIError

@@ -5,13 +5,14 @@ from typing import Any
 
 import requests
 
-from .chrome_cookies import read_chrome_cookies
-from .errors import missing_chrome_session_error
+from .errors import CanvasAPIError, missing_chrome_session_error
 from .profiles import resolve_chrome_profile_path, resolve_selected_chrome_profile
 from .resolve import resolve_canvas_base_url
 from .session import (
     apply_chrome_session_to_http_session,
+    cookie_browser,
     list_canvas_cookie_domains_for_profile,
+    read_chrome_session_cookies,
 )
 from .urls import canvas_root_url, normalize_canvas_api_base_url
 
@@ -34,13 +35,26 @@ def get_auth_status(
         profile_path=profile_path,
     )
     root_url = canvas_root_url(normalize_canvas_api_base_url(resolved_base_url))
-    cookies = read_chrome_cookies(
-        resolved_base_url,
-        profile_path=resolved_profile_path,
+    cookie_env_mode = bool(
+        os.getenv("CANVAS_SESSION_COOKIE") or os.getenv("CANVAS_CSRF_TOKEN")
     )
-    domains, _ = list_canvas_cookie_domains_for_profile(
-        profile_name=profile_name,
-        profile_path=profile_path,
+    cookie_error = None
+    try:
+        cookies = read_chrome_session_cookies(
+            resolved_base_url,
+            profile_name=profile_name,
+            profile_path=profile_path or resolved_profile_path,
+        )
+    except CanvasAPIError as exc:
+        cookies = None
+        cookie_error = str(exc)
+    domains, _ = (
+        ([], None)
+        if cookie_env_mode or cookie_error or cookie_browser() == "firefox"
+        else list_canvas_cookie_domains_for_profile(
+            profile_name=profile_name,
+            profile_path=profile_path,
+        )
     )
 
     status: dict[str, Any] = {
@@ -59,6 +73,9 @@ def get_auth_status(
         "probe_location": None,
         "error": None,
     }
+    if cookie_error:
+        status["error"] = cookie_error
+        return status
     if not cookies:
         status["error"] = missing_chrome_session_error(
             resolved_base_url,
@@ -99,7 +116,7 @@ def get_auth_status(
     status["probe_location"] = response.headers.get("location")
 
     if response.status_code == 200 and "application/json" in content_type.casefold():
-        status["auth_mode"] = "chrome-session"
+        status["auth_mode"] = "cookie-env" if cookie_env_mode else f"{cookie_browser()}-session"
         status["auth_verified"] = True
         status["auth_status"] = "verified"
         return status

@@ -27,6 +27,17 @@ canvas auth-status
 
 If that fails: `canvas settings profiles`, `canvas settings choose-profile`, or `export CANVAS_BASE_URL=https://school.instructure.com`. On macOS, approve Keychain prompts. Then `canvas courses --all --limit 5`.
 
+Firefox is available as an opt-in cookie source when Chrome cannot be read.
+Log into Canvas in Firefox and set `CANVAS_COOKIE_BROWSER=firefox`
+and `CANVAS_BASE_URL=https://school.instructure.com` in the process environment. Chrome
+remains the default. Both modes use the existing Canvas session cookies.
+
+Alternatively, supply both `CANVAS_SESSION_COOKIE` and `CANVAS_CSRF_TOKEN`
+alongside `CANVAS_BASE_URL` in the process environment. These override browser
+cookie lookup. Treat them as credentials: do not put values in source files,
+committed configuration, shell history, or chat. Unset both cookie variables
+to return to the selected browser's session.
+
 ## CLI
 
 ```bash
