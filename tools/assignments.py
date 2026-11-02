@@ -123,11 +123,12 @@ def get_assignment_rubric(args: dict[str, Any]) -> dict[str, Any]:
         return missing_argument("assignment_id")
 
     include_assessment = bool(args.get("include_assessment", False))
+    include_peer_reviews = bool(args.get("include_peer_reviews", False))
     client = canvas_client()
     assignment = client.get_assignment(
         course_id=course_id,
         assignment_id=assignment_id,
-        include_submission=include_assessment,
+        include_submission=include_assessment or include_peer_reviews,
         include_discussion_topic=False,
     )
 
@@ -155,7 +156,7 @@ def get_assignment_rubric(args: dict[str, Any]) -> dict[str, Any]:
                 assessment_source = "submissions_api"
 
     rubric = assignment.get("rubric") or []
-    return {
+    result = {
         "course_id": course_id,
         "assignment_id": assignment_id_value,
         "assignment_id_aliases": id_aliases(assignment_id_value, course_id=course_id),
@@ -169,6 +170,30 @@ def get_assignment_rubric(args: dict[str, Any]) -> dict[str, Any]:
         "rubric_assessment": assessment,
         "assessment_source": assessment_source,
     }
+    if include_peer_reviews:
+        peer_submission = submission if isinstance(submission, dict) else None
+        if not peer_submission or not peer_submission.get("user_id"):
+            submissions = client.list_submissions(
+                course_id=course_id,
+                student_id="self",
+                assignment_ids=[short_canvas_id(assignment_id_value or assignment_id)],
+                include=None,
+                grouped=False,
+                limit=1,
+            )
+            peer_submission = submissions[0] if submissions else None
+        result["peer_rubric_assessments"] = []
+        result["peer_assessment_source"] = None
+        if peer_submission and peer_submission.get("user_id"):
+            result["peer_rubric_assessments"] = client.get_peer_rubric_assessments(
+                course_id=course_id,
+                assignment_id=short_canvas_id(assignment_id_value or assignment_id),
+                student_id=str(peer_submission["user_id"]),
+                rubric=rubric,
+                anonymous=bool(assignment.get("anonymous_peer_reviews")),
+            )
+            result["peer_assessment_source"] = "submission_page"
+    return result
 
 
 def list_assignment_groups(args: dict[str, Any]) -> dict[str, Any]:

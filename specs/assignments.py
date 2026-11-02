@@ -61,6 +61,10 @@ ASSIGNMENT_TOOL_SPECS: list[ToolSpec] = [
                 "type": "boolean",
                 "description": "Include the current user's rubric assessment when available.",
             },
+            "include_peer_reviews": {
+                "type": "boolean",
+                "description": "Include peer reviewers' rubric responses for the current user's submission.",
+            },
         },
         required=["course_id", "assignment_id"],
     ),

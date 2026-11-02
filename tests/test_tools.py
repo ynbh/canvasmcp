@@ -232,6 +232,54 @@ class TestGetAssignmentRubricTool:
             "7438508"
         ]
 
+    def test_peer_reviews_use_current_submission_and_raw_assignment_id(
+        self, mock_client
+    ):
+        mock_client.get_assignment.return_value = {
+            "id": "13980000007438508",
+            "name": "Essay",
+            "rubric": [{"id": "crit1", "description": "Clarity"}],
+            "submission": {"user_id": 123},
+        }
+        mock_client.get_peer_rubric_assessments.return_value = [
+            {"reviewer": "Reviewer 1", "criteria": []}
+        ]
+        from tools import get_assignment_rubric
+
+        result = get_assignment_rubric(
+            {
+                "course_id": "1398466",
+                "assignment_id": "1398~7438508",
+                "include_peer_reviews": True,
+            }
+        )
+
+        assert result["peer_rubric_assessments"] == [
+            {"reviewer": "Reviewer 1", "criteria": []}
+        ]
+        assert result["peer_assessment_source"] == "submission_page"
+        mock_client.get_peer_rubric_assessments.assert_called_once_with(
+            course_id="1398466",
+            assignment_id="7438508",
+            student_id="123",
+            rubric=[{"id": "crit1", "description": "Clarity"}],
+            anonymous=False,
+        )
+
+    def test_peer_reviews_fall_back_to_submissions_api(self, mock_client):
+        mock_client.get_assignment.return_value = {"id": 42, "rubric": []}
+        mock_client.list_submissions.return_value = [{"user_id": 123}]
+        mock_client.get_peer_rubric_assessments.return_value = []
+        from tools import get_assignment_rubric
+
+        result = get_assignment_rubric(
+            {"course_id": "1", "assignment_id": "42", "include_peer_reviews": True}
+        )
+
+        assert result["peer_rubric_assessments"] == []
+        mock_client.list_submissions.assert_called_once()
+        assert mock_client.get_peer_rubric_assessments.call_args.kwargs["student_id"] == "123"
+
 
 class TestInstallAssignmentSubmissionFilesTool:
     def test_requires_ids(self, mock_client):

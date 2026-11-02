@@ -64,6 +64,13 @@ def register(invoke: Callable[[str, dict], None]) -> typer.Typer:
                 help="Include current user's rubric assessment when available."
             ),
         ] = False,
+        peer_reviews: Annotated[
+            bool,
+            typer.Option(
+                "--peer-reviews",
+                help="Include peer reviewers' rubric responses for your submission.",
+            ),
+        ] = False,
     ) -> None:
         invoke(
             "get_assignment_rubric",
@@ -71,6 +78,7 @@ def register(invoke: Callable[[str, dict], None]) -> typer.Typer:
                 "course_id": course_id,
                 "assignment_id": assignment_id,
                 "include_assessment": include_assessment,
+                "include_peer_reviews": peer_reviews,
             },
         )
 
