@@ -1,3 +1,4 @@
+from dataclasses import replace
 from unittest.mock import Mock
 
 import pytest
@@ -65,14 +66,74 @@ def test_registered_schemas_are_valid():
         Draft202012Validator.check_schema(spec.parameters)
 
 
+
+# Pinned so that dropping a tool's `required` entry is a visible, reviewed change:
+# without it, the tool would run and call Canvas with empty IDs.
+REQUIRED_ARGUMENTS = {
+    "get_today": [],
+    "list_courses": [],
+    "resolve_course": ["query"],
+    "get_course_overview": ["course_id"],
+    "get_course_syllabus": ["course_id"],
+    "list_course_pages": ["course_id"],
+    "canvas_get_page": ["course_id", "url_or_id"],
+    "list_course_tabs": ["course_id"],
+    "get_course_tab": ["course_id", "tab_id"],
+    "list_course_people": ["course_id"],
+    "list_modules": ["course_id"],
+    "get_course_grade_summary": ["course_id"],
+    "resolve_canvas_url": ["url"],
+    "get_course_context_snapshot": ["course_id"],
+    "list_course_assignments": ["course_id"],
+    "get_assignment_details": ["assignment_id", "course_id"],
+    "get_assignment_rubric": ["assignment_id", "course_id"],
+    "list_assignment_groups": ["course_id"],
+    "list_course_submissions": ["course_id"],
+    "install_assignment_submission_files": ["assignment_id", "course_id"],
+    "preview_assignment_submission": ["assignment_id", "course_id", "submission_type"],
+    "confirm_assignment_submission": ["preview_token"],
+    "list_scheduled_submissions": [],
+    "get_scheduled_submission": ["job_id"],
+    "cancel_scheduled_submission": ["job_id"],
+    "list_discussion_topics": ["course_id"],
+    "get_discussion_entries": ["course_id", "topic_id"],
+    "list_course_files": ["course_id"],
+    "download_course_file": ["course_id", "file_id"],
+    "list_course_folders": ["course_id"],
+    "list_announcements": ["course_ids"],
+    "list_todo_items": [],
+    "list_inbox_conversations": [],
+    "get_inbox_conversation": ["conversation_id"],
+}
+
+
+def test_required_arguments_are_pinned():
+    declared = {
+        spec.name: sorted(spec.parameters.get("required", [])) for spec in registry.TOOL_SPECS
+    }
+    assert declared == REQUIRED_ARGUMENTS
+
+
+def _valid_value(schema):
+    if "enum" in schema:
+        return schema["enum"][0]
+    return ["1"] if schema.get("type") == "array" else "1"
+
+
 @pytest.mark.parametrize(
-    "spec",
-    [spec for spec in registry.TOOL_SPECS if spec.parameters.get("required")],
-    ids=lambda spec: spec.name,
+    ("name", "required"),
+    [(name, required) for name, required in REQUIRED_ARGUMENTS.items() if required],
 )
-def test_every_tool_rejects_missing_required_arguments_before_calling_canvas(
-    spec, mock_client
-):
-    result = registry.dispatch_tool_call(spec.name, {})
-    assert result["error"] == "missing_argument"
-    assert mock_client.mock_calls == []
+def test_schema_rejects_each_missing_required_argument(monkeypatch, name, required):
+    # Replace the handler so only schema validation can produce the error.
+    handler = Mock()
+    monkeypatch.setitem(
+        registry._SPEC_MAP, name, replace(registry._SPEC_MAP[name], handler=handler)
+    )
+    properties = registry._SPEC_MAP[name].parameters["properties"]
+    for missing in required:
+        args = {arg: _valid_value(properties[arg]) for arg in required if arg != missing}
+        result = registry.dispatch_tool_call(name, args)
+        assert result["error"] == "missing_argument", (missing, result)
+        assert missing in result["message"]
+    handler.assert_not_called()

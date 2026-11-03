@@ -50,17 +50,17 @@ def test_json_preserves_payload_and_is_compact(monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "args",
+    ("args", "code"),
     [
-        ["tool", "run", "get_today", "--args", "[1]"],
-        ["tool", "run", "get_today", "--args", "{"],
-        ["tool", "run", "nonexistent"],
+        (["tool", "run", "get_today", "--args", "[1]"], "invalid_json"),
+        (["tool", "run", "get_today", "--args", "{"], "invalid_json"),
+        (["tool", "run", "nonexistent"], "unknown_tool"),
     ],
 )
-def test_json_tool_usage_errors(args):
+def test_json_tool_usage_errors(args, code):
     result = CliRunner().invoke(app, ["--output", "json", *args])
     assert result.exit_code == 2
-    assert json.loads(result.stdout)["error"]
+    assert json.loads(result.stdout)["error"] == code
     assert result.stderr == ""
 
 

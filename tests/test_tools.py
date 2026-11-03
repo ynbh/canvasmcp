@@ -18,38 +18,35 @@ class TestListCoursesTool:
         from tools import list_courses
 
         result = list_courses({"favorites_only": True, "limit": 10})
-        assert result["count"] == 1
-        assert result["courses"][0]["name"] == "Math 101"
+        assert result["courses"][0].items() >= {
+            "id": "123", "name": "Math 101", "course_code": "MATH101", "state": "active"
+        }.items()
+        mock_client.list_courses.assert_called_once_with(
+            favorites_only=True, search=None, limit=10
+        )
 
 class TestResolveCourseTool:
     """Tests for resolve_course tool handler."""
 
-    def test_empty_query_returns_no_matches(self, mock_client):
+    def test_empty_query_returns_no_matches_without_calling_canvas(self, mock_client):
+        mock_client.list_courses.return_value = [{"id": 1, "name": "CMSC430"}]
         from tools import resolve_course
 
-        result = resolve_course({"query": ""})
-        assert result["count"] == 0
+        assert resolve_course({"query": "  "}) == {"count": 0, "matches": []}
+        mock_client.list_courses.assert_not_called()
 
-    def test_scores_and_sorts(self, mock_client):
+    def test_ranks_matches_best_first_and_drops_non_matches(self, mock_client):
         mock_client.list_courses.return_value = [
-            {
-                "id": 1,
-                "name": "CMSC430",
-                "course_code": "CMSC430",
-                "workflow_state": "active",
-            },
-            {
-                "id": 2,
-                "name": "ENGL101",
-                "course_code": "ENGL101",
-                "workflow_state": "active",
-            },
+            {"id": 3, "name": "ENGL101", "course_code": "ENGL101"},
+            {"id": 2, "name": "CMSC430 Lab", "course_code": "CMSC430L"},
+            {"id": 1, "name": "CMSC430", "course_code": "CMSC430"},
         ]
         from tools import resolve_course
 
         result = resolve_course({"query": "CMSC430"})
-        assert result["count"] >= 1
-        assert result["matches"][0]["name"] == "CMSC430"
+
+        assert [(m["id"], m["score"]) for m in result["matches"]] == [("1", 1.0), ("2", 0.97)]
+        assert result["count"] == 2
 
 
 class TestListCourseAssignmentsTool:
@@ -67,8 +64,11 @@ class TestListCourseAssignmentsTool:
         from tools import list_course_assignments
 
         result = list_course_assignments({"course_id": "123"})
-        assert result["count"] == 1
-        assert result["assignments"][0]["name"] == "HW1"
+        assert result["assignments"][0].items() >= {
+            "id": "42", "name": "HW1", "due_at": "2026-03-01",
+            "submission_types": ["online_upload"],
+        }.items()
+        assert mock_client.list_assignments.call_args.kwargs["course_id"] == "123"
 
 
 class TestGetAssignmentDetailsTool:
@@ -86,8 +86,15 @@ class TestGetAssignmentDetailsTool:
         from tools import get_assignment_details
 
         result = get_assignment_details({"course_id": "1", "assignment_id": "42"})
-        assert result["assignment"]["name"] == "Midterm"
-        assert result["assignment"]["rubric"][0]["description"] == "Correctness"
+        assert result["assignment"].items() >= {
+            "id": "42",
+            "name": "Midterm",
+            "description": "<p>Exam</p>",
+            "points_possible": 100,
+            "has_rubric": True,
+            "rubric": [{"id": "crit1", "description": "Correctness", "points": 10}],
+            "rubric_settings": {"points_possible": 10},
+        }.items()
 
 
 class TestGetAssignmentRubricTool:
@@ -206,7 +213,7 @@ class TestInstallAssignmentSubmissionFilesTool:
         )
 
         assert result["count"] == 0
-        assert "message" in result
+        assert result["message"] == "No submission was returned for this assignment."
 
     def test_uses_raw_assignment_id_for_submission_lookup(self, mock_client):
         mock_client.list_submissions.return_value = []
@@ -438,8 +445,10 @@ class TestListCourseFilesTool:
         from tools import list_course_files
 
         result = list_course_files({"course_id": "123"})
-        assert result["count"] == 1
-        assert result["files"][0]["display_name"] == "notes.pdf"
+        assert result["files"][0].items() >= {
+            "id": "1", "display_name": "notes.pdf", "content_type": "application/pdf", "size": 1024
+        }.items()
+        assert mock_client.list_files.call_args.kwargs["course_id"] == "123"
 
 
 class TestListCoursePagesTool:
@@ -452,8 +461,10 @@ class TestListCoursePagesTool:
         from tools import list_course_pages
 
         result = list_course_pages({"course_id": "123"})
-        assert result["count"] == 1
-        assert result["pages"][0]["title"] == "Home Page"
+        assert result["pages"][0].items() >= {
+            "page_id": "1", "url": "home", "title": "Home Page", "published": True
+        }.items()
+        assert mock_client.list_pages.call_args.kwargs["course_id"] == "123"
 
 
 class TestListCourseTabsTool:
@@ -475,9 +486,10 @@ class TestListCourseTabsTool:
         from tools import list_course_tabs
 
         result = list_course_tabs({"course_id": "123"})
-        assert result["count"] == 2
-        assert result["tabs"][0]["id"] == "home"
-        assert result["tabs"][1]["label"] == "Syllabus"
+        assert [
+            {key: tab[key] for key in ("id", "label", "html_url")} for tab in result["tabs"]
+        ] == mock_client.list_tabs.return_value
+        assert mock_client.list_tabs.call_args.kwargs["course_id"] == "123"
 
 
 class TestGetCourseTabTool:
@@ -516,8 +528,9 @@ class TestListDiscussionTopicsTool:
         from tools import list_discussion_topics
 
         result = list_discussion_topics({"course_id": "123"})
-        assert result["count"] == 1
-        assert result["topics"][0]["title"] == "Week 1 Discussion"
+        assert result["topics"][0].items() >= {
+            "id": "10", "title": "Week 1 Discussion", "assignment_id": "42"
+        }.items()
 
     def test_merges_assignment_linked_topics_when_discussion_list_empty(
         self, mock_client
@@ -582,8 +595,13 @@ class TestListTodoItemsTool:
         from tools import list_todo_items
 
         result = list_todo_items({})
-        assert result["count"] == 1
-        assert result["todo"][0]["assignment"]["name"] == "Midterm"
+        todo = result["todo"][0]
+        assert todo.items() >= {
+            "type": "submitting", "course_id": "123", "context_name": "MATH101"
+        }.items()
+        assert todo["assignment"].items() >= {
+            "id": "1", "name": "Midterm", "due_at": "2026-04-29"
+        }.items()
 
 
 class TestListCoursePeopleTool:
@@ -596,8 +614,10 @@ class TestListCoursePeopleTool:
         from tools import list_course_people
 
         result = list_course_people({"course_id": "123"})
-        assert result["count"] == 1
-        assert result["people"][0]["name"] == "Jane Doe"
+        assert result["people"][0].items() >= {
+            "id": "1", "name": "Jane Doe", "email": "jane@umd.edu", "enrollments": []
+        }.items()
+        assert mock_client.list_course_users.call_args.kwargs["course_id"] == "123"
 
 
 class TestResolveCanvasUrlTool:
@@ -622,7 +642,8 @@ class TestResolveCanvasUrlTool:
         )
         assert result["resource_type"] == "assignment"
         assert result["recommended_tool"] == "get_assignment_details"
-        assert result["details"]["assignment"]["name"] == "HW1"
+        assert mock_client.get_assignment.call_args.kwargs["assignment_id"] == "42"
+        assert mock_client.get_assignment.call_args.kwargs["course_id"] == "123"
 
     def test_parses_discussion_url(self, mock_client):
         from tools import resolve_canvas_url
@@ -641,7 +662,9 @@ class TestResolveCanvasUrlTool:
         )
         assert result["resource_type"] == "discussion_topic"
         assert result["recommended_tool"] == "get_discussion_entries"
-        assert result["details"]["topic"]["title"] == "Discussion"
+        mock_client.get_discussion_topic_view.assert_called_once_with(
+            course_id="123", topic_id="10"
+        )
 
     def test_parses_page_url(self, mock_client):
         from tools import resolve_canvas_url
@@ -661,7 +684,7 @@ class TestResolveCanvasUrlTool:
         )
         assert result["resource_type"] == "page"
         assert result["recommended_tool"] == "canvas_get_page"
-        assert result["details"]["page"]["title"] == "Home"
+        assert mock_client.get_page.call_args.kwargs["url_or_id"] == "home"
 
     def test_course_only_url(self):
         from tools import resolve_canvas_url
@@ -696,7 +719,7 @@ class TestResolveCanvasUrlTool:
         )
         assert result["resource_type"] == "syllabus"
         assert result["recommended_tool"] == "get_course_syllabus"
-        assert result["details"]["syllabus_body"] == "<p>S</p>"
+        assert mock_client.get_course.call_args.kwargs["course_id"] == "123"
 
     def test_parses_people_url(self, mock_client):
         from tools import resolve_canvas_url
@@ -711,8 +734,7 @@ class TestResolveCanvasUrlTool:
         )
         assert result["resource_type"] == "course_people"
         assert result["recommended_tool"] == "list_course_people"
-        assert result["details"]["people"] == []
-        mock_client.list_course_users.assert_called_once()
+        assert mock_client.list_course_users.call_args.kwargs["course_id"] == "123"
 
     def test_parses_unknown_course_subpath(self):
         from tools import resolve_canvas_url
@@ -768,8 +790,9 @@ class TestCanvasGetPageTool:
                 "url_or_id": "https://umd.instructure.com/courses/1/pages/home",
             }
         )
-        assert "page" in result
         assert result["page"]["title"] == "Home"
+        assert mock_client.get_page.call_args.kwargs["url_or_id"] == "home"
+        assert mock_client.get_page.call_args.kwargs["course_id"] == "1"
 
 
 class TestDispatchToolCall:

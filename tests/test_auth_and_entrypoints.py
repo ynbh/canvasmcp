@@ -60,24 +60,6 @@ class TestReadChromeCookies:
             )
         assert chrome.call_args.kwargs["domain_name"] == "instructure.com"
 
-    def test_reads_parent_domain_for_specific_canvas_host(self):
-        from auth.chrome_cookies import read_chrome_cookies
-
-        def cookie(name: str, value: str, domain: str):
-            return type("Cookie", (), {"name": name, "value": value, "domain": domain})()
-
-        cookies = [
-            cookie("canvas_session", "session123", ".instructure.com"),
-            cookie("_csrf_token", "csrf456", ".instructure.com"),
-        ]
-        with mock.patch("auth.chrome_cookies.browser_cookie3.chrome", return_value=cookies) as chrome:
-            assert read_chrome_cookies("https://umd.instructure.com") == (
-                "session123",
-                "csrf456",
-            )
-        chrome.assert_called_once()
-        assert chrome.call_args.kwargs["domain_name"] == "instructure.com"
-
     def test_reads_grandparent_domain_and_prefers_most_specific(self):
         from auth.chrome_cookies import read_chrome_cookies
 
@@ -304,10 +286,11 @@ class TestAuthPriority:
         with (
             mock.patch("auth.resolve_canvas_base_url", return_value="https://umd.instructure.com"),
             mock.patch("auth.read_chrome_session_cookies", return_value=None),
+            mock.patch("auth.errors.list_canvas_cookie_domains", return_value=[]),
         ):
             from auth import CanvasAPIError, ensure_canvas_auth_configured
 
-            with pytest.raises(CanvasAPIError):
+            with pytest.raises(CanvasAPIError, match="No usable Canvas session"):
                 ensure_canvas_auth_configured()
 
     def test_uses_env_base_url_override(self):
@@ -373,11 +356,12 @@ class TestCreateCanvasClientFromEnv:
         with (
             mock.patch("client.resolve_canvas_base_url", return_value="https://umd.instructure.com"),
             mock.patch("client.read_chrome_session_cookies", return_value=None),
+            mock.patch("auth.errors.list_canvas_cookie_domains", return_value=[]),
         ):
             from auth import CanvasAPIError
             from client import create_canvas_client_from_env
 
-            with pytest.raises(CanvasAPIError):
+            with pytest.raises(CanvasAPIError, match="No usable Canvas session"):
                 create_canvas_client_from_env()
 
 
