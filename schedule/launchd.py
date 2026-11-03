@@ -88,13 +88,15 @@ def bootstrap_job(job_id: str) -> subprocess.CompletedProcess[str]:
 
 
 def bootout_job(job_id: str) -> None:
+    # Plist first: bootout can SIGTERM the calling fire process before it
+    # returns, and a leftover plist would be reloaded at the next login.
+    try:
+        plist_path(job_id).unlink(missing_ok=True)
+    except OSError:
+        pass
     domain = f"gui/{os.getuid()}"
     try:
         _run_launchctl(["bootout", f"{domain}/{plist_label(job_id)}"])
-    except OSError:
-        pass
-    try:
-        plist_path(job_id).unlink(missing_ok=True)
     except OSError:
         pass
 
@@ -105,6 +107,13 @@ def install_job(
     *,
     canvas_bin: str | None = None,
 ) -> Path:
+    """Write and load the job's plist; raises if launchd did not accept it."""
     path = write_plist(job_id, submit_at, canvas_bin=canvas_bin)
-    bootstrap_job(job_id)
+    result = bootstrap_job(job_id)
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip()
+        raise RuntimeError(
+            f"launchctl bootstrap failed ({result.returncode})"
+            + (f": {detail}" if detail else "")
+        )
     return path

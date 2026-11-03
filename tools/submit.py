@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import ExitStack
 from datetime import datetime, timedelta, timezone
 import os
 from pathlib import Path
@@ -7,16 +8,19 @@ import re
 from typing import Any
 
 from auth import CanvasAPIError, get_auth_status
-from schedule.caffeinate import start_caffeinate
-from schedule.fire import cancel_job
-from schedule.launchd import install_job
+from schedule.caffeinate import start_caffeinate, stop_caffeinate
+from schedule.fire import CANCEL_LOCK_TIMEOUT_SECONDS, cancel_job, delete_uploaded_files
+from schedule.launchd import bootout_job, install_job
 from schedule.notify import notify
 from schedule.store import (
     JOB_STATUSES,
+    JobLockTimeout,
     consume_preview,
     create_job,
+    delete_job,
     get_job,
     get_pending_job,
+    job_lock,
     list_jobs,
     load_preview,
     parse_submit_at,
@@ -317,31 +321,30 @@ def _load_assignment(course_id: str, assignment_id: str) -> dict[str, Any]:
 
 
 def _delete_uploaded_files(file_ids: list[Any]) -> list[dict[str, Any]]:
-    notes: list[dict[str, Any]] = []
     if not file_ids:
-        return notes
-    client = canvas_client()
-    for file_id in file_ids:
-        ident = str(file_id)
-        try:
-            notes.append(client.delete_user_file(file_id=ident))
-        except Exception as exc:
-            notes.append({"file_id": ident, "error": str(exc)})
-    return notes
+        return []
+    try:
+        client = canvas_client()
+    except Exception as exc:  # never mask the error that made us clean up
+        return [{"file_id": str(file_id), "error": str(exc)} for file_id in file_ids]
+    return delete_uploaded_files(file_ids, client)
 
 
-def _cancel_pending(job: dict[str, Any]) -> list[dict[str, Any]]:
-    file_ids = list(job.get("file_ids") or [])
-    cancel_job(str(job["id"]))
-    return _delete_uploaded_files(file_ids)
+def _abort(error: dict[str, Any], file_ids: list[str]) -> dict[str, Any]:
+    """Return an error after deleting files this confirm uploaded but won't use."""
+    return {**error, "file_cleanup": _delete_uploaded_files(file_ids)}
 
 
 def _upload_files(
-    course_id: str, assignment_id: str, file_paths: list[str]
-) -> tuple[list[str], list[str]]:
+    course_id: str,
+    assignment_id: str,
+    file_paths: list[str],
+    *,
+    file_ids: list[str],
+    filenames: list[str],
+) -> None:
+    """Upload each file, appending as it goes so a failure leaves the done ones visible."""
     client = canvas_client()
-    file_ids: list[str] = []
-    filenames: list[str] = []
     for raw in file_paths:
         info = _inspect_file(raw)
         uploaded = client.upload_submission_file(
@@ -357,7 +360,6 @@ def _upload_files(
                 or info["filename"]
             )
         )
-    return file_ids, filenames
 
 
 def _submission_payload(
@@ -552,33 +554,92 @@ def confirm_assignment_submission(args: dict[str, Any]) -> dict[str, Any]:
             pending_job=pending_job,
         )
 
-    file_cleanup: list[dict[str, Any]] = []
-    if pending_job is not None and override:
-        file_cleanup = _cancel_pending(pending_job)
+    replacing = pending_job if (pending_job is not None and override) else None
+    with ExitStack() as held:
+        if replacing is not None:
+            # Hold the old job still until the new submit is in place: its fire
+            # waits, then finds it cancelled. Taken before the token, so a busy
+            # job leaves the token usable for a retry.
+            try:
+                held.enter_context(
+                    job_lock(str(replacing["id"]), timeout=CANCEL_LOCK_TIMEOUT_SECONDS)
+                )
+            except JobLockTimeout as exc:
+                return tool_error("job_busy", str(exc), pending_job=replacing)
 
-    if consume_preview(token) is None:
-        return tool_error(
-            "preview_unavailable",
-            "Preview token is missing, expired, or already used",
+        # Claim the token before any side effect: of two concurrent confirms,
+        # the loser stops here having changed nothing.
+        if consume_preview(token) is None:
+            return tool_error(
+                "preview_unavailable",
+                "Preview token is missing, expired, or already used",
+            )
+
+        outcome = _submit_or_schedule(
+            course_id=course_id,
+            assignment_id=assignment_id,
+            assignment_name=preview.get("assignment_name") or assignment.get("name"),
+            submission_type=submission_type,
+            file_paths=file_paths,
+            body=body,
+            now=now,
+            submit_at=submit_at,
+            caffeinate=caffeinate,
         )
+        # Only replace the old job once the new one is in place; on failure it
+        # stays pending so the assignment is not left with nothing scheduled.
+        if outcome.get("ok") and replacing is not None:
+            replaced = cancel_job(str(replacing["id"]))
+            outcome["file_cleanup"] = list(replaced.get("file_cleanup") or [])
+        return outcome
 
-    try:
-        file_ids: list[str] = []
-        filenames: list[str] = []
-        if submission_type == "online_upload":
-            file_ids, filenames = _upload_files(course_id, assignment_id, file_paths)
-    except CanvasAPIError as exc:
-        return canvas_api_tool_error(exc)
 
-    assignment_name = preview.get("assignment_name") or assignment.get("name")
+def _discard_job(job_id: str) -> None:
+    """Undo a job that was recorded but never armed."""
+    stop_caffeinate(job_id)
+    bootout_job(job_id)
+    delete_job(job_id)
+
+
+def _submit_or_schedule(
+    *,
+    course_id: str,
+    assignment_id: str,
+    assignment_name: Any,
+    submission_type: str,
+    file_paths: list[str],
+    body: str | None,
+    now: bool,
+    submit_at: datetime | None,
+    caffeinate: bool,
+) -> dict[str, Any]:
+    file_ids: list[str] = []
+    filenames: list[str] = []
+    if submission_type == "online_upload":
+        try:
+            _upload_files(
+                course_id,
+                assignment_id,
+                file_paths,
+                file_ids=file_ids,
+                filenames=filenames,
+            )
+        except CanvasAPIError as exc:
+            return _abort(canvas_api_tool_error(exc), file_ids)
+        except Exception:
+            _delete_uploaded_files(file_ids)
+            raise
 
     if now:
         auth_status = _auth_status()
         if not auth_status.get("auth_verified"):
-            return tool_error(
-                "auth_not_verified",
-                "Canvas auth is not verified",
-                auth_status=auth_status,
+            return _abort(
+                tool_error(
+                    "auth_not_verified",
+                    "Canvas auth is not verified",
+                    auth_status=auth_status,
+                ),
+                file_ids,
             )
         try:
             submission = canvas_client().submit_assignment(
@@ -589,7 +650,8 @@ def confirm_assignment_submission(args: dict[str, Any]) -> dict[str, Any]:
                 ),
             )
         except CanvasAPIError as exc:
-            return canvas_api_tool_error(exc)
+            # Kept, not deleted: Canvas may have accepted the submission anyway.
+            return {**canvas_api_tool_error(exc), "uploaded_file_ids": file_ids}
         notify(f"Submitted {assignment_name}")
         return {
             "ok": True,
@@ -597,33 +659,59 @@ def confirm_assignment_submission(args: dict[str, Any]) -> dict[str, Any]:
             "course_id": course_id,
             "assignment_id": assignment_id,
             "submission": submission,
-            "file_cleanup": file_cleanup,
+            "file_cleanup": [],
         }
 
     assert submit_at is not None
-    job = create_job(
-        course_id=course_id,
-        assignment_id=assignment_id,
-        submission_type=submission_type,
-        submit_at=submit_at,
-        assignment_name=assignment_name,
-        file_ids=file_ids,
-        filenames=filenames,
-        body=body if submission_type == "online_text_entry" else None,
-        caffeinate=caffeinate,
-    )
-    install_job(job["id"], job["submit_at"])
-    if caffeinate:
-        start_caffeinate(job["id"])
-    job = get_job(job["id"]) or job
+    if submit_at <= _now():
+        # Slow uploads can eat the gap between preview and submit_at.
+        return _abort(
+            tool_error(
+                "preview_refused",
+                _refuse_message(["past_submit_at"]),
+                refuse_reasons=["past_submit_at"],
+            ),
+            file_ids,
+        )
+
+    # Record, then keep awake, then arm launchd last: by the time a fire can
+    # run, the job record and its caffeinate pid already exist.
     warnings = [] if caffeinate else [SLEEP_WARNING]
+    job_id: str | None = None
+    try:
+        job = create_job(
+            course_id=course_id,
+            assignment_id=assignment_id,
+            submission_type=submission_type,
+            submit_at=submit_at,
+            assignment_name=assignment_name,
+            file_ids=file_ids,
+            filenames=filenames,
+            body=body if submission_type == "online_text_entry" else None,
+            caffeinate=caffeinate,
+        )
+        job_id = str(job["id"])
+        if caffeinate:
+            try:
+                start_caffeinate(job_id)
+            except OSError as exc:
+                warnings = [f"Could not start caffeinate ({exc}). {SLEEP_WARNING}"]
+        install_job(job_id, job["submit_at"])
+    except Exception as exc:
+        if job_id is not None:
+            _discard_job(job_id)
+        return _abort(
+            tool_error("schedule_failed", f"Could not schedule the submit: {exc}"),
+            file_ids,
+        )
+    job = get_job(job_id) or job
     return {
         "ok": True,
         "now": False,
-        "job_id": job["id"],
+        "job_id": job_id,
         "job": job,
         "warnings": warnings,
-        "file_cleanup": file_cleanup,
+        "file_cleanup": [],
     }
 
 
@@ -661,6 +749,19 @@ def cancel_scheduled_submission(args: dict[str, Any]) -> dict[str, Any]:
             "Only pending jobs can be cancelled",
             job=job,
         )
-    file_cleanup = _cancel_pending(job)
-    cancelled = get_job(job_id) or {"id": job_id, "status": "cancelled"}
-    return {"ok": True, "job": cancelled, "file_cleanup": file_cleanup}
+    try:
+        cancelled = cancel_job(job_id)
+    except JobLockTimeout as exc:
+        return tool_error("job_busy", str(exc), job=job)
+    if cancelled.get("status") != "cancelled":
+        # A fire got there first; report what actually happened.
+        return tool_error(
+            "invalid_argument",
+            "Only pending jobs can be cancelled",
+            job=cancelled,
+        )
+    return {
+        "ok": True,
+        "job": cancelled,
+        "file_cleanup": list(cancelled.get("file_cleanup") or []),
+    }
