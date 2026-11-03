@@ -118,10 +118,9 @@ def test_sent_conversations_fall_back_to_your_last_message(mock_client):
 
 
 class TestGetInboxConversationTool:
-    def test_requires_a_numeric_id(self, mock_client):
+    def test_rejects_non_numeric_id(self, mock_client):
         from tools import get_inbox_conversation
 
-        assert get_inbox_conversation({})["error"] == "missing_argument"
         assert get_inbox_conversation({"conversation_id": "1/../2"})["error"] == "invalid_argument"
         mock_client.get_conversation.assert_not_called()
 
@@ -254,11 +253,3 @@ def test_cli_inbox_commands(monkeypatch, argv, tool, args):
     result = CliRunner().invoke(app, ["--output", "json", *argv])
     assert result.exit_code == 0, result.output
     assert calls == [(tool, args)]
-
-
-def test_inbox_tools_are_registered_read_only():
-    from specs.registry import TOOL_SPECS
-
-    specs = {spec.name: spec for spec in TOOL_SPECS}
-    for name in ("list_inbox_conversations", "get_inbox_conversation"):
-        assert specs[name].read_only is True

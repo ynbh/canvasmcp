@@ -110,7 +110,6 @@ class TestCanvasIdHelpers:
         from tools.common import candidate_ids_for_lookup as _candidate_ids_for_lookup
 
         candidates = _candidate_ids_for_lookup("1133~5", course_id="1133000000099")
-        assert len(candidates) > 0
         assert candidates[0] == "11330000005"
 
 

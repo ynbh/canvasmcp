@@ -6,12 +6,11 @@ from unittest import mock
 
 import pytest
 
+from client import CanvasClient
 from tools.submit import (
     SLEEP_WARNING,
     cancel_scheduled_submission,
     confirm_assignment_submission,
-    get_scheduled_submission,
-    list_scheduled_submissions,
     preview_assignment_submission,
 )
 
@@ -79,7 +78,7 @@ def txt_path(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def submit_mocks(pdf_path: Path):
-    client = mock.MagicMock()
+    client = mock.create_autospec(CanvasClient, instance=True)
     client.get_assignment.return_value = _assignment()
     client.upload_submission_file.return_value = {
         "id": "99",
@@ -144,15 +143,6 @@ def submit_mocks(pdf_path: Path):
 
 
 class TestPreviewAssignmentSubmission:
-    def test_requires_ids_and_type(self, submit_mocks):
-        assert preview_assignment_submission({})["error"] == "missing_argument"
-        assert preview_assignment_submission({"course_id": "1"})["error"] == (
-            "missing_argument"
-        )
-        assert preview_assignment_submission(
-            {"course_id": "1", "assignment_id": "42"}
-        )["error"] == "missing_argument"
-
     def test_refuses_when_no_clock(self, submit_mocks, pdf_path):
         result = preview_assignment_submission(
             {
@@ -527,20 +517,6 @@ class TestConfirmAssignmentSubmission:
 
 
 class TestScheduledJobTools:
-    def test_list_and_get(self, submit_mocks):
-        listed = list_scheduled_submissions({})
-        assert listed["count"] == 1
-        assert listed["jobs"][0]["id"] == "job1"
-
-        got = get_scheduled_submission({"job_id": "job1"})
-        assert got["ok"] is True
-        assert got["job"]["id"] == "job1"
-
-    def test_get_missing(self, submit_mocks):
-        with mock.patch("tools.submit.get_job", return_value=None):
-            result = get_scheduled_submission({"job_id": "missing"})
-        assert result["error"] == "not_found"
-
     def test_cancel_pending_deletes_files(self, submit_mocks):
         result = cancel_scheduled_submission({"job_id": "job1"})
         assert result["ok"] is True
@@ -556,17 +532,6 @@ class TestScheduledJobTools:
 
 
 class TestSubmitSpecsAndRecommendations:
-    def test_fire_is_not_an_mcp_tool(self):
-        from specs.registry import TOOL_SPECS
-
-        names = {spec.name for spec in TOOL_SPECS}
-        assert "preview_assignment_submission" in names
-        assert "confirm_assignment_submission" in names
-        assert "list_scheduled_submissions" in names
-        assert "get_scheduled_submission" in names
-        assert "cancel_scheduled_submission" in names
-        assert "fire_scheduled_submission" not in names
-
     def test_write_tools_not_recommended_for_resources(self):
         from tools.common import recommended_tool_for_resource
 

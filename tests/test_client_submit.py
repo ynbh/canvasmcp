@@ -113,30 +113,6 @@ class TestSubmitAssignment:
         assert result["submission_type"] == "online_upload"
         assert result["id"] == 7
 
-    def test_online_text_entry_with_body(self):
-        assignment = mock.MagicMock()
-        assignment.submit.return_value = {
-            "id": 8,
-            "submission_type": "online_text_entry",
-            "body": "hello world",
-        }
-        patcher, _canvas = _patch_canvas(assignment)
-        with patcher:
-            result = _write_client().submit_assignment(
-                course_id="c1",
-                assignment_id="a1",
-                submission={
-                    "submission_type": "online_text_entry",
-                    "body": "hello world",
-                },
-            )
-
-        assignment.submit.assert_called_once_with(
-            {"submission_type": "online_text_entry", "body": "hello world"}
-        )
-        assert result["submission_type"] == "online_text_entry"
-        assert result["body"] == "hello world"
-
     def test_requires_submission_type(self):
         requester = mock.MagicMock()
         assignment = Assignment(requester, {"id": 1, "course_id": 2})

@@ -8,11 +8,11 @@ from unittest import mock
 import pytest
 from typer.testing import CliRunner
 
+from client import CanvasClient
 from schedule.caffeinate import start_caffeinate, stop_caffeinate
 from schedule.fire import cancel_job, fire_job
 from schedule.launchd import (
     install_job,
-    plist_label,
     start_calendar_interval,
     write_plist,
 )
@@ -21,7 +21,6 @@ from schedule.store import (
     create_job,
     get_job,
     get_pending_job,
-    list_jobs,
     load_preview,
     save_preview,
     update_job,
@@ -226,7 +225,7 @@ class TestFireJob:
     def test_not_pending_is_noop(self, schedule_env, mock_notify):
         job = _pending_job()
         update_job(job["id"], status="submitted")
-        client = mock.MagicMock()
+        client = mock.create_autospec(CanvasClient, instance=True)
         with (
             mock.patch("schedule.fire.canvas_client", return_value=client),
             mock.patch(
@@ -241,7 +240,7 @@ class TestFireJob:
 
     def test_missed_window_does_not_post(self, schedule_env, mock_notify):
         job = _pending_job(submit_at=_aware(-90))
-        client = mock.MagicMock()
+        client = mock.create_autospec(CanvasClient, instance=True)
         with (
             mock.patch("schedule.fire.canvas_client", return_value=client),
             mock.patch(
@@ -257,7 +256,7 @@ class TestFireJob:
 
     def test_auth_failed_does_not_post(self, schedule_env, mock_notify):
         job = _pending_job(submit_at=_aware(-5))
-        client = mock.MagicMock()
+        client = mock.create_autospec(CanvasClient, instance=True)
         with (
             mock.patch("schedule.fire.canvas_client", return_value=client),
             mock.patch(
@@ -273,7 +272,7 @@ class TestFireJob:
 
     def test_happy_submit_posts_stored_file_ids(self, schedule_env, mock_notify):
         job = _pending_job(submit_at=_aware(-5))
-        client = mock.MagicMock()
+        client = mock.create_autospec(CanvasClient, instance=True)
         client.submit_assignment.return_value = {
             "id": 9,
             "submitted_at": "2026-09-10T23:57:05-04:00",
@@ -307,7 +306,7 @@ class TestFireJob:
             submit_at=_aware(-5),
             body="hello",
         )
-        client = mock.MagicMock()
+        client = mock.create_autospec(CanvasClient, instance=True)
         client.submit_assignment.return_value = {"id": 3}
         with (
             mock.patch("schedule.fire.canvas_client", return_value=client),
@@ -344,10 +343,16 @@ class TestScheduledCli:
         assert "submitted" in result.stdout
 
 
-class TestListJobs:
-    def test_status_filter(self, schedule_env):
+
+class TestScheduledJobTools:
+    def test_list_filters_by_status_and_get_finds_by_id(self, schedule_env):
+        from tools.submit import get_scheduled_submission, list_scheduled_submissions
+
         pending = _pending_job()
-        other = _pending_job(assignment_id="z")
-        update_job(other["id"], status="cancelled")
-        assert [job["id"] for job in list_jobs(status="pending")] == [pending["id"]]
-        assert plist_label(pending["id"]) == f"com.canvasmcp.submit.{pending['id']}"
+        cancelled = _pending_job(assignment_id="z")
+        update_job(cancelled["id"], status="cancelled")
+
+        listed = list_scheduled_submissions({"status": "pending"})
+        assert [job["id"] for job in listed["jobs"]] == [pending["id"]]
+        assert get_scheduled_submission({"job_id": cancelled["id"]})["job"]["status"] == "cancelled"
+        assert get_scheduled_submission({"job_id": "nope"})["error"] == "not_found"
