@@ -117,6 +117,9 @@ def submit_mocks(pdf_path: Path):
         mock.patch("tools.submit.list_jobs", return_value=[job]),
         mock.patch("tools.submit.install_job") as install_job,
         mock.patch("tools.submit.start_caffeinate") as start_caffeinate,
+        mock.patch("tools.submit.stop_caffeinate") as stop_caffeinate,
+        mock.patch("tools.submit.bootout_job") as bootout_job,
+        mock.patch("tools.submit.delete_job") as delete_job,
         mock.patch("tools.submit.notify") as notify_fn,
         mock.patch("tools.submit.cancel_job", return_value={**job, "status": "cancelled"}),
     ):
@@ -136,6 +139,9 @@ def submit_mocks(pdf_path: Path):
             "create_job": create_job,
             "install_job": install_job,
             "start_caffeinate": start_caffeinate,
+            "stop_caffeinate": stop_caffeinate,
+            "bootout_job": bootout_job,
+            "delete_job": delete_job,
             "notify": notify_fn,
             "job": job,
             "stored": stored,
@@ -440,8 +446,34 @@ class TestConfirmAssignmentSubmission:
         submit_mocks["consume_preview"].assert_not_called()
         submit_mocks["client"].upload_submission_file.assert_not_called()
 
-    def test_override_cancels_old_job(self, submit_mocks, pdf_path):
+    def test_override_cancels_old_job_only_after_new_one_is_armed(
+        self, submit_mocks, pdf_path
+    ):
         pending = {"id": "oldjob", "status": "pending", "file_ids": ["88"]}
+        cleanup = [{"file_id": "88", "deleted": True}]
+        order = mock.Mock()
+        order.attach_mock(submit_mocks["consume_preview"], "consume")
+        order.attach_mock(submit_mocks["install_job"], "install")
+        with (
+            mock.patch("tools.submit.get_pending_job", return_value=pending),
+            mock.patch(
+                "tools.submit.cancel_job",
+                return_value={**pending, "status": "cancelled", "file_cleanup": cleanup},
+            ) as cancel_job,
+        ):
+            order.attach_mock(cancel_job, "cancel")
+            result = confirm_assignment_submission(
+                {"preview_token": "tok123", "override": True}
+            )
+        assert result["ok"] is True
+        assert result["file_cleanup"] == cleanup
+        assert [name for name, *_ in order.mock_calls] == ["consume", "install", "cancel"]
+
+    def test_override_keeps_old_job_when_new_one_fails(self, submit_mocks, pdf_path):
+        from auth import CanvasAPIError
+
+        pending = {"id": "oldjob", "status": "pending", "file_ids": ["88"]}
+        submit_mocks["client"].upload_submission_file.side_effect = CanvasAPIError("boom")
         with (
             mock.patch("tools.submit.get_pending_job", return_value=pending),
             mock.patch("tools.submit.cancel_job") as cancel_job,
@@ -449,10 +481,161 @@ class TestConfirmAssignmentSubmission:
             result = confirm_assignment_submission(
                 {"preview_token": "tok123", "override": True}
             )
+        assert result["error"]
+        cancel_job.assert_not_called()
+
+    def test_busy_old_job_leaves_token_usable(self, submit_mocks, pdf_path):
+        from schedule.store import JobLockTimeout
+
+        pending = {"id": "oldjob", "status": "pending", "file_ids": ["88"]}
+        with (
+            mock.patch("tools.submit.get_pending_job", return_value=pending),
+            mock.patch("tools.submit.job_lock", side_effect=JobLockTimeout("busy")),
+        ):
+            result = confirm_assignment_submission(
+                {"preview_token": "tok123", "override": True}
+            )
+        assert result["error"] == "job_busy"
+        submit_mocks["consume_preview"].assert_not_called()
+        submit_mocks["client"].upload_submission_file.assert_not_called()
+
+    def test_lost_token_claim_changes_nothing(self, submit_mocks, pdf_path):
+        pending = {"id": "oldjob", "status": "pending", "file_ids": ["88"]}
+        submit_mocks["consume_preview"].return_value = None
+        with (
+            mock.patch("tools.submit.get_pending_job", return_value=pending),
+            mock.patch("tools.submit.cancel_job") as cancel_job,
+        ):
+            result = confirm_assignment_submission(
+                {"preview_token": "tok123", "override": True}
+            )
+        assert result["error"] == "preview_unavailable"
+        cancel_job.assert_not_called()
+        submit_mocks["client"].upload_submission_file.assert_not_called()
+
+    def test_partial_upload_failure_deletes_uploaded_files(
+        self, submit_mocks, pdf_path, txt_path
+    ):
+        from auth import CanvasAPIError
+
+        stored = _stored_preview(file_paths=[str(pdf_path), str(txt_path)])
+        submit_mocks["load_preview"].return_value = stored
+        submit_mocks["consume_preview"].return_value = stored
+        submit_mocks["client"].upload_submission_file.side_effect = [
+            {"id": "99", "display_name": "essay.pdf"},
+            CanvasAPIError("upload broke", status_code=500),
+        ]
+        result = confirm_assignment_submission({"preview_token": "tok123"})
+        assert result["error"]
+        submit_mocks["client"].delete_user_file.assert_called_once_with(file_id="99")
+        submit_mocks["create_job"].assert_not_called()
+        submit_mocks["install_job"].assert_not_called()
+
+    def test_now_auth_recheck_failure_deletes_uploaded_files(self, submit_mocks, pdf_path):
+        stored = _stored_preview(file_paths=[str(pdf_path)], now=True, submit_at=None)
+        submit_mocks["load_preview"].return_value = stored
+        submit_mocks["consume_preview"].return_value = stored
+        with mock.patch(
+            "tools.submit.get_auth_status",
+            side_effect=[_auth_ok(), {"auth_verified": False}],
+        ):
+            result = confirm_assignment_submission({"preview_token": "tok123"})
+        assert result["error"] == "auth_not_verified"
+        submit_mocks["client"].submit_assignment.assert_not_called()
+        submit_mocks["client"].delete_user_file.assert_called_once_with(file_id="99")
+
+    def test_now_submit_failure_keeps_uploaded_files(self, submit_mocks, pdf_path):
+        from auth import CanvasAPIError
+
+        stored = _stored_preview(file_paths=[str(pdf_path)], now=True, submit_at=None)
+        submit_mocks["load_preview"].return_value = stored
+        submit_mocks["consume_preview"].return_value = stored
+        submit_mocks["client"].submit_assignment.side_effect = CanvasAPIError("timeout")
+        result = confirm_assignment_submission({"preview_token": "tok123"})
+        assert result["error"]
+        assert result["uploaded_file_ids"] == ["99"]
+        submit_mocks["client"].delete_user_file.assert_not_called()
+
+    def test_install_failure_discards_job_and_cleans_up(self, submit_mocks, pdf_path):
+        submit_mocks["install_job"].side_effect = FileNotFoundError(
+            "canvas executable not found on PATH"
+        )
+        result = confirm_assignment_submission(
+            {"preview_token": "tok123", "caffeinate": True}
+        )
+        assert result["error"] == "schedule_failed"
+        assert "not found on PATH" in result["message"]
+        submit_mocks["stop_caffeinate"].assert_called_once_with("job1")
+        submit_mocks["bootout_job"].assert_called_once_with("job1")
+        submit_mocks["delete_job"].assert_called_once_with("job1")
+        submit_mocks["client"].delete_user_file.assert_called_once_with(file_id="99")
+
+    def test_record_and_caffeinate_happen_before_launchd_is_armed(self, submit_mocks):
+        order = mock.Mock()
+        order.attach_mock(submit_mocks["create_job"], "create")
+        order.attach_mock(submit_mocks["start_caffeinate"], "caffeinate")
+        order.attach_mock(submit_mocks["install_job"], "install")
+        result = confirm_assignment_submission(
+            {"preview_token": "tok123", "caffeinate": True}
+        )
         assert result["ok"] is True
-        cancel_job.assert_called_once_with("oldjob")
-        submit_mocks["client"].delete_user_file.assert_called_once_with(file_id="88")
-        submit_mocks["consume_preview"].assert_called_once_with("tok123")
+        assert [name for name, *_ in order.mock_calls] == ["create", "caffeinate", "install"]
+        assert submit_mocks["install_job"].call_args.args[0] == "job1"
+
+    def test_submit_at_that_passes_during_upload_is_refused(self, submit_mocks, pdf_path):
+        import tools.submit as submit_module
+
+        real_now = submit_module._now()
+        clock = {"now": real_now}
+
+        def slow_upload(**kwargs):
+            clock["now"] = datetime.fromisoformat(FUTURE_AT) + timedelta(seconds=1)
+            return {"id": "99", "display_name": "essay.pdf"}
+
+        submit_mocks["client"].upload_submission_file.side_effect = slow_upload
+        with mock.patch("tools.submit._now", side_effect=lambda: clock["now"]):
+            result = confirm_assignment_submission({"preview_token": "tok123"})
+        assert result["refuse_reasons"] == ["past_submit_at"]
+        submit_mocks["create_job"].assert_not_called()
+        submit_mocks["install_job"].assert_not_called()
+        submit_mocks["client"].delete_user_file.assert_called_once_with(file_id="99")
+
+    def test_cleanup_failure_does_not_mask_the_original_error(
+        self, submit_mocks, pdf_path, txt_path
+    ):
+        from auth import CanvasAPIError
+
+        stored = _stored_preview(file_paths=[str(pdf_path), str(txt_path)])
+        submit_mocks["load_preview"].return_value = stored
+        submit_mocks["consume_preview"].return_value = stored
+        real_client = submit_mocks["client"]
+        state = {"uploaded": False}
+
+        def failing_upload(**kwargs):
+            if not state["uploaded"]:
+                state["uploaded"] = True
+                return {"id": "99", "display_name": "essay.pdf"}
+            raise CanvasAPIError("boom")
+
+        real_client.upload_submission_file.side_effect = failing_upload
+
+        def flaky_client():
+            if state["uploaded"]:
+                raise RuntimeError("no client")
+            return real_client
+
+        with mock.patch("tools.submit.canvas_client", side_effect=flaky_client):
+            result = confirm_assignment_submission({"preview_token": "tok123"})
+        assert "boom" in result["message"]
+        assert result["file_cleanup"] == [{"file_id": "99", "error": "no client"}]
+
+    def test_caffeinate_failure_still_arms_job(self, submit_mocks):
+        submit_mocks["start_caffeinate"].side_effect = FileNotFoundError("caffeinate")
+        result = confirm_assignment_submission(
+            {"preview_token": "tok123", "caffeinate": True}
+        )
+        assert result["ok"] is True
+        assert "Could not start caffeinate" in result["warnings"][0]
 
     def test_consumes_token_and_arms_job(self, submit_mocks, pdf_path):
         result = confirm_assignment_submission({"preview_token": "tok123"})
@@ -517,10 +700,33 @@ class TestConfirmAssignmentSubmission:
 
 
 class TestScheduledJobTools:
-    def test_cancel_pending_deletes_files(self, submit_mocks):
-        result = cancel_scheduled_submission({"job_id": "job1"})
+    def test_cancel_pending_reports_file_cleanup(self, submit_mocks):
+        cleanup = [{"file_id": "99", "deleted": True}]
+        job = submit_mocks["job"]
+        with mock.patch(
+            "tools.submit.cancel_job",
+            return_value={**job, "status": "cancelled", "file_cleanup": cleanup},
+        ) as cancel_job:
+            result = cancel_scheduled_submission({"job_id": "job1"})
         assert result["ok"] is True
-        submit_mocks["client"].delete_user_file.assert_called_once_with(file_id="99")
+        assert result["file_cleanup"] == cleanup
+        cancel_job.assert_called_once_with("job1")
+
+    def test_cancel_that_loses_to_fire_reports_outcome(self, submit_mocks):
+        job = submit_mocks["job"]
+        with mock.patch(
+            "tools.submit.cancel_job", return_value={**job, "status": "submitted"}
+        ):
+            result = cancel_scheduled_submission({"job_id": "job1"})
+        assert result["error"] == "invalid_argument"
+        assert result["job"]["status"] == "submitted"
+
+    def test_cancel_busy_job(self, submit_mocks):
+        from schedule.store import JobLockTimeout
+
+        with mock.patch("tools.submit.cancel_job", side_effect=JobLockTimeout("busy")):
+            result = cancel_scheduled_submission({"job_id": "job1"})
+        assert result["error"] == "job_busy"
 
     def test_cancel_non_pending_refuses(self, submit_mocks):
         with mock.patch(
