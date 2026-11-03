@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from auth import CanvasAPIError
 from tools.common import (
     canvas_client,
     clamp,
@@ -114,6 +115,35 @@ def get_assignment_details(args: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _peer_rubric_feedback(
+    assessments: list[dict[str, Any]],
+    *,
+    rubric: list[dict[str, Any]],
+    anonymous: bool,
+) -> list[dict[str, Any]]:
+    descriptions = {str(item.get("id")): item.get("description") for item in rubric}
+    result = []
+    for assessment in assessments:
+        if not isinstance(assessment, dict) or assessment.get("assessment_type") != "peer_review":
+            continue
+        assessor = assessment.get("assessor")
+        user = assessor.get("user") if isinstance(assessor, dict) else None
+        name = user.get("name") if isinstance(user, dict) and not anonymous else None
+        criteria = [
+            {
+                "criterion_id": str(row.get("criterion_id", "")),
+                "description": descriptions.get(str(row.get("criterion_id", ""))),
+                "comments": row.get("comments"),
+                "points": row.get("points"),
+                "rating": row.get("description"),
+            }
+            for row in assessment.get("data") or []
+            if isinstance(row, dict)
+        ]
+        result.append({"reviewer": name or f"Reviewer {len(result) + 1}", "criteria": criteria})
+    return result
+
+
 def get_assignment_rubric(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
     assignment_id = str(args.get("assignment_id", "")).strip()
@@ -132,28 +162,31 @@ def get_assignment_rubric(args: dict[str, Any]) -> dict[str, Any]:
         include_discussion_topic=False,
     )
 
-    submission = assignment.get("submission")
-    assessment = None
-    assessment_source = None
-    if isinstance(submission, dict):
-        assessment = submission.get("rubric_assessment")
-        if assessment is not None:
-            assessment_source = "assignment_submission"
-
     assignment_id_value = str(assignment.get("id", ""))
-    if include_assessment and assessment is None:
+    api_assignment_id = short_canvas_id(assignment_id_value or assignment_id)
+    submission = assignment.get("submission")
+    if not isinstance(submission, dict):
+        submission = None
+    assessment = submission.get("rubric_assessment") if submission else None
+    assessment_source = "assignment_submission" if assessment is not None else None
+
+    needs_assessment = include_assessment and assessment is None
+    needs_user_id = include_peer_reviews and not (submission and submission.get("user_id"))
+    if needs_assessment or needs_user_id:
         submissions = client.list_submissions(
             course_id=course_id,
             student_id="self",
-            assignment_ids=[short_canvas_id(assignment_id_value or assignment_id)],
-            include=["rubric_assessment"],
+            assignment_ids=[api_assignment_id],
+            include=["rubric_assessment"] if needs_assessment else None,
             grouped=False,
             limit=1,
         )
         if submissions:
-            assessment = submissions[0].get("rubric_assessment")
-            if assessment is not None:
-                assessment_source = "submissions_api"
+            submission = submissions[0]
+            if needs_assessment:
+                assessment = submission.get("rubric_assessment")
+                if assessment is not None:
+                    assessment_source = "submissions_api"
 
     rubric = assignment.get("rubric") or []
     result = {
@@ -171,28 +204,24 @@ def get_assignment_rubric(args: dict[str, Any]) -> dict[str, Any]:
         "assessment_source": assessment_source,
     }
     if include_peer_reviews:
-        peer_submission = submission if isinstance(submission, dict) else None
-        if not peer_submission or not peer_submission.get("user_id"):
-            submissions = client.list_submissions(
-                course_id=course_id,
-                student_id="self",
-                assignment_ids=[short_canvas_id(assignment_id_value or assignment_id)],
-                include=None,
-                grouped=False,
-                limit=1,
-            )
-            peer_submission = submissions[0] if submissions else None
         result["peer_rubric_assessments"] = []
         result["peer_assessment_source"] = None
-        if peer_submission and peer_submission.get("user_id"):
-            result["peer_rubric_assessments"] = client.get_peer_rubric_assessments(
-                course_id=course_id,
-                assignment_id=short_canvas_id(assignment_id_value or assignment_id),
-                student_id=str(peer_submission["user_id"]),
-                rubric=rubric,
-                anonymous=bool(assignment.get("anonymous_peer_reviews")),
-            )
-            result["peer_assessment_source"] = "submission_page"
+        user_id = submission.get("user_id") if submission else None
+        if user_id:
+            try:
+                assessments = client.get_submission_page_rubric_assessments(
+                    course_id=course_id,
+                    assignment_id=api_assignment_id,
+                    student_id=str(user_id),
+                )
+                result["peer_rubric_assessments"] = _peer_rubric_feedback(
+                    assessments,
+                    rubric=rubric,
+                    anonymous=bool(assignment.get("anonymous_peer_reviews")),
+                )
+                result["peer_assessment_source"] = "submission_page"
+            except CanvasAPIError as exc:
+                result["peer_assessment_error"] = str(exc)
     return result
 
 

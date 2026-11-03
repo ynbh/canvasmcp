@@ -241,8 +241,8 @@ class TestGetAssignmentRubricTool:
             "rubric": [{"id": "crit1", "description": "Clarity"}],
             "submission": {"user_id": 123},
         }
-        mock_client.get_peer_rubric_assessments.return_value = [
-            {"reviewer": "Reviewer 1", "criteria": []}
+        mock_client.get_submission_page_rubric_assessments.return_value = [
+            {"assessment_type": "peer_review", "data": []}
         ]
         from tools import get_assignment_rubric
 
@@ -258,18 +258,16 @@ class TestGetAssignmentRubricTool:
             {"reviewer": "Reviewer 1", "criteria": []}
         ]
         assert result["peer_assessment_source"] == "submission_page"
-        mock_client.get_peer_rubric_assessments.assert_called_once_with(
+        mock_client.get_submission_page_rubric_assessments.assert_called_once_with(
             course_id="1398466",
             assignment_id="7438508",
             student_id="123",
-            rubric=[{"id": "crit1", "description": "Clarity"}],
-            anonymous=False,
         )
 
     def test_peer_reviews_fall_back_to_submissions_api(self, mock_client):
         mock_client.get_assignment.return_value = {"id": 42, "rubric": []}
         mock_client.list_submissions.return_value = [{"user_id": 123}]
-        mock_client.get_peer_rubric_assessments.return_value = []
+        mock_client.get_submission_page_rubric_assessments.return_value = []
         from tools import get_assignment_rubric
 
         result = get_assignment_rubric(
@@ -278,7 +276,32 @@ class TestGetAssignmentRubricTool:
 
         assert result["peer_rubric_assessments"] == []
         mock_client.list_submissions.assert_called_once()
-        assert mock_client.get_peer_rubric_assessments.call_args.kwargs["student_id"] == "123"
+        assert mock_client.get_submission_page_rubric_assessments.call_args.kwargs["student_id"] == "123"
+
+    def test_peer_review_failure_keeps_rubric(self, mock_client):
+        from auth import CanvasAPIError
+
+        mock_client.get_assignment.return_value = {
+            "id": 42,
+            "rubric": [{"id": "c1"}],
+            "submission": {"user_id": 123, "rubric_assessment": {"c1": {}}},
+        }
+        mock_client.get_submission_page_rubric_assessments.side_effect = CanvasAPIError("page changed")
+        from tools import get_assignment_rubric
+
+        result = get_assignment_rubric(
+            {
+                "course_id": "1",
+                "assignment_id": "42",
+                "include_assessment": True,
+                "include_peer_reviews": True,
+            }
+        )
+
+        assert result["rubric"] == [{"id": "c1"}]
+        assert result["peer_rubric_assessments"] == []
+        assert "page changed" in result["peer_assessment_error"]
+        mock_client.list_submissions.assert_not_called()
 
 
 class TestInstallAssignmentSubmissionFilesTool:

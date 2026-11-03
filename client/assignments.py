@@ -7,89 +7,52 @@ from urllib.parse import quote
 
 from canvasapi import Canvas
 
-from .base import MAX_PER_PAGE, _canvas_exception_for_status
+from .base import MAX_PER_PAGE
 
 
-def _peer_rubrics_from_html(
-    page: str,
-    *,
-    rubric: list[dict[str, Any]],
-    anonymous: bool,
-) -> list[dict[str, Any]]:
-    descriptions = {str(item.get("id")): item.get("description") for item in rubric}
-    assessments: list[dict[str, Any]] | None = None
-    for match in re.finditer(r'"rubricAssessments"\s*:', page):
+_JSON = json.JSONDecoder()
+
+
+def _rubric_assessments_from_html(page: str) -> list[dict[str, Any]]:
+    """Extract the rubricAssessments array Canvas embeds in a submission page."""
+    for match in re.finditer(r'"rubricAssessments"\s*:\s*', page):
         try:
-            value, _ = json.JSONDecoder().raw_decode(page[match.end() :].lstrip())
+            value, _ = _JSON.raw_decode(page, match.end())
         except json.JSONDecodeError:
             continue
         if isinstance(value, list) and all(
             isinstance(item, dict) and "rubric_assessment" in item for item in value
         ):
-            assessments = value
-            break
-    if assessments is None:
-        raise ValueError("Canvas submission page did not contain rubric assessments")
-
-    result = []
-    for item in assessments:
-        assessment = item.get("rubric_assessment")
-        if not isinstance(assessment, dict) or assessment.get("assessment_type") != "peer_review":
-            continue
-        assessor = assessment.get("assessor")
-        user = assessor.get("user") if isinstance(assessor, dict) else None
-        if not isinstance(user, dict):
-            user = {}
-        reviewer = (
-            f"Reviewer {len(result) + 1}"
-            if anonymous
-            else user.get("name") or f"Reviewer {len(result) + 1}"
-        )
-        criteria = []
-        for row in assessment.get("data") or []:
-            if not isinstance(row, dict):
-                continue
-            criterion_id = str(row.get("criterion_id", ""))
-            criteria.append(
-                {
-                    "criterion_id": criterion_id,
-                    "description": descriptions.get(criterion_id),
-                    "comments": row.get("comments"),
-                    "points": row.get("points"),
-                    "rating": row.get("description"),
-                }
-            )
-        result.append({"reviewer": reviewer, "criteria": criteria})
-    return result
+            return [item["rubric_assessment"] for item in value]
+    raise ValueError("Canvas submission page did not contain rubric assessments")
 
 
 class CanvasAssignmentsMixin:
-    def get_peer_rubric_assessments(
+    def get_submission_page_rubric_assessments(
         self,
         *,
         course_id: str,
         assignment_id: str,
         student_id: str,
-        rubric: list[dict[str, Any]],
-        anonymous: bool = False,
     ) -> list[dict[str, Any]]:
-        """Read peer rubric comments from the authenticated submission page."""
+        """Read every rubric assessment embedded in the authenticated submission page.
+
+        Canvas's submissions API omits peer assessments for students, but the
+        submission page carries them in its JS environment.
+        """
 
         def _load(canvas: Canvas) -> list[dict[str, Any]]:
-            requester = getattr(canvas, "_Canvas__requester")
             path = "/".join(
                 quote(str(part), safe="")
                 for part in ("courses", course_id, "assignments", assignment_id, "submissions", student_id)
             )
-            with requester._session.get(f"{self._root_url}/{path}", timeout=20) as response:
-                if response.status_code >= 400:
-                    raise _canvas_exception_for_status(response.status_code)
+            with self._web_get(canvas, f"/{path}") as response:
                 page = response.text
-            return _peer_rubrics_from_html(page, rubric=rubric, anonymous=anonymous)
+            return _rubric_assessments_from_html(page)
 
         return self._call_canvas(
             _load,
-            f"read peer rubric assessments for assignment {assignment_id} in course {course_id}",
+            f"read submission page rubric assessments for assignment {assignment_id} in course {course_id}",
         )
 
     def list_assignments(
