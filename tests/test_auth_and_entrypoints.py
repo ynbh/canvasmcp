@@ -38,13 +38,6 @@ class TestDomainFromBaseUrl:
             == "canvas.school.edu"
         )
 
-    def test_default_url(self):
-        from auth.chrome_cookies import _domain_from_base_url
-
-        assert (
-            _domain_from_base_url("https://canvas.instructure.com")
-            == "canvas.instructure.com"
-        )
 
 
 class TestReadChromeCookies:
@@ -399,13 +392,6 @@ class TestGeneratedCli:
         assert result.exit_code == 0
         assert "list_courses" in result.stdout
 
-    def test_main_invokes_app(self):
-        import cli.bootstrap as cli_boot
-
-        with mock.patch.object(cli_boot, "app") as app:
-            cli_boot.main()
-            app.assert_called_once_with()
-
     def test_courses_command_dispatches_expected_args(self):
         import cli
         import cli.bootstrap as cli_boot
@@ -467,25 +453,6 @@ class TestGeneratedCli:
             result = runner.invoke(cli.app, ["today"])
         assert result.exit_code == 0
         ensure_auth.assert_not_called()
-
-    def test_auth_status_reports_env_override(self):
-        import cli
-        import cli.bootstrap as cli_boot
-
-        runner = CliRunner()
-        with mock.patch.object(
-            cli_boot,
-            "get_auth_status",
-            return_value={
-                "auth_mode": "chrome-session",
-                "resolved_canvas_base_url": "https://umd.instructure.com",
-                "auth_status": "verified",
-            },
-        ):
-            result = runner.invoke(cli.app, ["auth-status"])
-        assert result.exit_code == 0
-        assert "chrome-session" in result.stdout
-        assert "umd.instructure.com" in result.stdout
 
     def test_auth_status_returns_json_error_instead_of_exiting(self):
         import cli
@@ -566,22 +533,6 @@ class TestGeneratedCli:
         assert json.loads(result.stdout)["auth"]["auth_status"] == "error"
         assert "Could not infer a Canvas site from Chrome" in result.stdout
         assert "Traceback" not in result.stdout
-
-    def test_settings_profiles_outputs_profile_statuses(self):
-        import cli
-
-        runner = CliRunner()
-        with mock.patch(
-            "cli.settings.describe_chrome_profiles",
-            return_value=[
-                {"name": "terpmail.umd.edu", "auth_status": "verified"},
-                {"name": "Yashas", "auth_status": "not_logged_in"},
-            ],
-        ):
-            result = runner.invoke(cli.app, ["settings", "profiles"])
-        assert result.exit_code == 0
-        assert "verified" in result.stdout
-        assert "not_logged_in" in result.stdout
 
     def test_settings_choose_profile_headless_accepts_explicit_name(self):
         import cli

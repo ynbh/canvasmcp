@@ -63,3 +63,16 @@ def test_optional_none_and_unbounded_integer(handler):
 def test_registered_schemas_are_valid():
     for spec in registry.TOOL_SPECS:
         Draft202012Validator.check_schema(spec.parameters)
+
+
+@pytest.mark.parametrize(
+    "spec",
+    [spec for spec in registry.TOOL_SPECS if spec.parameters.get("required")],
+    ids=lambda spec: spec.name,
+)
+def test_every_tool_rejects_missing_required_arguments_before_calling_canvas(
+    spec, mock_client
+):
+    result = registry.dispatch_tool_call(spec.name, {})
+    assert result["error"] == "missing_argument"
+    assert mock_client.mock_calls == []

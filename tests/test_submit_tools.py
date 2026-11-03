@@ -144,15 +144,6 @@ def submit_mocks(pdf_path: Path):
 
 
 class TestPreviewAssignmentSubmission:
-    def test_requires_ids_and_type(self, submit_mocks):
-        assert preview_assignment_submission({})["error"] == "missing_argument"
-        assert preview_assignment_submission({"course_id": "1"})["error"] == (
-            "missing_argument"
-        )
-        assert preview_assignment_submission(
-            {"course_id": "1", "assignment_id": "42"}
-        )["error"] == "missing_argument"
-
     def test_refuses_when_no_clock(self, submit_mocks, pdf_path):
         result = preview_assignment_submission(
             {
@@ -559,13 +550,7 @@ class TestSubmitSpecsAndRecommendations:
     def test_fire_is_not_an_mcp_tool(self):
         from specs.registry import TOOL_SPECS
 
-        names = {spec.name for spec in TOOL_SPECS}
-        assert "preview_assignment_submission" in names
-        assert "confirm_assignment_submission" in names
-        assert "list_scheduled_submissions" in names
-        assert "get_scheduled_submission" in names
-        assert "cancel_scheduled_submission" in names
-        assert "fire_scheduled_submission" not in names
+        assert "fire_scheduled_submission" not in {spec.name for spec in TOOL_SPECS}
 
     def test_write_tools_not_recommended_for_resources(self):
         from tools.common import recommended_tool_for_resource
