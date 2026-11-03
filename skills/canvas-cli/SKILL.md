@@ -106,12 +106,14 @@ Best practice:
 ```bash
 canvas assignments rubric <course_id> <assignment_id>
 canvas assignments rubric <course_id> <assignment_id> --include-assessment
+canvas assignments rubric <course_id> <assignment_id> --peer-reviews
 ```
 
 Best practice:
 
 - Use `assignments rubric` when the user asks for grading criteria, rubric categories, points, or how an assignment will be evaluated.
 - Use `--include-assessment` only when the user asks how they were graded or wants rubric feedback for their own submission.
+- Use `--peer-reviews` for completed peer rubric responses when `rubric_assessment` is null; this reads the authenticated submission page without opening a browser tab.
 - Report rubric title, total points, criteria names, point values, and rating levels.
 - Do not assume `use_rubric_for_grading=true`; report its value if relevant.
 - If the assignment has no rubric, say so and suggest checking assignment details/comments instead.

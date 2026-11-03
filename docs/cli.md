@@ -15,6 +15,7 @@ See the [README](../README.md) for install, auth, and the usual flow. `canvas --
 | `canvas assignments list ID` | `list_course_assignments` |
 | `canvas assignments show COURSE ASSIGNMENT` | `get_assignment_details` |
 | `canvas assignments rubric COURSE ASSIGNMENT` | `get_assignment_rubric` |
+| `canvas assignments rubric COURSE ASSIGNMENT --peer-reviews` | `get_assignment_rubric` with peer rubric responses from your submission |
 | `canvas assignments groups ID` | `list_assignment_groups` |
 | `canvas course submissions ID` | `list_course_submissions` |
 | `canvas assignments submissions install COURSE ASSIGNMENT` | `install_assignment_submission_files` |

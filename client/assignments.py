@@ -1,13 +1,60 @@
 from __future__ import annotations
 
+import json
+import re
 from typing import Any
+from urllib.parse import quote
 
 from canvasapi import Canvas
 
 from .base import MAX_PER_PAGE
 
 
+_JSON = json.JSONDecoder()
+
+
+def _rubric_assessments_from_html(page: str) -> list[dict[str, Any]]:
+    """Extract the rubricAssessments array Canvas embeds in a submission page."""
+    for match in re.finditer(r'"rubricAssessments"\s*:\s*', page):
+        try:
+            value, _ = _JSON.raw_decode(page, match.end())
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, list) and all(
+            isinstance(item, dict) and "rubric_assessment" in item for item in value
+        ):
+            return [item["rubric_assessment"] for item in value]
+    raise ValueError("Canvas submission page did not contain rubric assessments")
+
+
 class CanvasAssignmentsMixin:
+    def get_submission_page_rubric_assessments(
+        self,
+        *,
+        course_id: str,
+        assignment_id: str,
+        student_id: str,
+    ) -> list[dict[str, Any]]:
+        """Read every rubric assessment embedded in the authenticated submission page.
+
+        Canvas's submissions API omits peer assessments for students, but the
+        submission page carries them in its JS environment.
+        """
+
+        def _load(canvas: Canvas) -> list[dict[str, Any]]:
+            path = "/".join(
+                quote(str(part), safe="")
+                for part in ("courses", course_id, "assignments", assignment_id, "submissions", student_id)
+            )
+            with self._web_get(canvas, f"/{path}") as response:
+                page = response.text
+            return _rubric_assessments_from_html(page)
+
+        return self._call_canvas(
+            _load,
+            f"read submission page rubric assessments for assignment {assignment_id} in course {course_id}",
+        )
+
     def list_assignments(
         self,
         *,

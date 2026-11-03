@@ -41,6 +41,7 @@ canvas todo                                    # what Canvas says you need to do
 canvas resolve "ENGL394"                       # find a course ID by name or code
 canvas assignments list 12345 --bucket upcoming
 canvas assignments show 12345 67890
+canvas assignments rubric 12345 67890 --peer-reviews # peer rubric comments on your submission
 canvas announcements --course 12345
 canvas inbox list --scope unread               # reading never marks messages read
 canvas files download 12345 555
