@@ -438,6 +438,33 @@ class TestGeneratedCli:
         assert result.exit_code == 0
         ensure_auth.assert_not_called()
 
+    def test_auth_status_reports_verified_session(self):
+        import cli
+        import cli.bootstrap as cli_boot
+
+        status = {
+            "auth_mode": "chrome-session",
+            "resolved_canvas_base_url": "https://umd.instructure.com",
+            "auth_status": "verified",
+            "auth_verified": True,
+        }
+        with mock.patch.object(cli_boot, "get_auth_status", return_value=status):
+            result = CliRunner().invoke(cli.app, ["--output", "json", "auth-status"])
+        assert result.exit_code == 0
+        assert json.loads(result.stdout) == status
+
+    def test_settings_profiles_lists_each_profile_with_its_auth_status(self):
+        import cli
+
+        profiles = [
+            {"name": "terpmail.umd.edu", "auth_status": "verified"},
+            {"name": "Yashas", "auth_status": "not_logged_in"},
+        ]
+        with mock.patch("cli.settings.describe_chrome_profiles", return_value=profiles):
+            result = CliRunner().invoke(cli.app, ["--output", "json", "settings", "profiles"])
+        assert result.exit_code == 0
+        assert json.loads(result.stdout) == {"profiles": profiles}
+
     def test_auth_status_returns_json_error_instead_of_exiting(self):
         import cli
         import cli.bootstrap as cli_boot
@@ -564,6 +591,29 @@ class TestGeneratedCli:
             "error": "auth_error", "message": "Open Canvas in Chrome and retry"
         }
         assert "Traceback" not in result.stdout
+
+
+class TestCliMainProcess:
+    """Run the real entrypoint, since CliRunner bypasses main()."""
+
+    @pytest.mark.parametrize(
+        "args",
+        [["no-such-command"], ["--output", "json", "tool", "run", "get_today", "--args", "{"]],
+    )
+    def test_usage_errors_exit_2_without_traceback(self, args, tmp_path):
+        import subprocess
+        import sys
+
+        result = subprocess.run(
+            [sys.executable, "-c", "from cli import main; main()", *args],
+            cwd=Path(__file__).resolve().parents[1],
+            env={**os.environ, "HOME": str(tmp_path)},
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        assert result.returncode == 2, result.stderr
+        assert "Traceback" not in result.stdout + result.stderr
 
 
 class TestMcpServerEntrypoint:

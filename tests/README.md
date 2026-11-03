@@ -17,7 +17,9 @@
 - **Validate arguments in one place.** `dispatch_tool_call` rejects missing required
   arguments and wrong types from each tool's schema before the tool runs.
   `test_registry.py` pins every tool's required arguments and checks that each missing one
-  is rejected without calling the tool's code. Don't add per-tool "requires X" tests.
+  is rejected without calling the tool's code. The schema accepts `""` and `[]`, so it also
+  checks that each tool rejects a blank required argument without calling Canvas. Don't add
+  per-tool "requires X" tests.
 - **No duplicates.** If two tests fail for exactly the same bugs, keep the stronger one or
   parametrize.
 - **Use real local dependencies when cheap:** `tmp_path` stores, SQLite cookie files,

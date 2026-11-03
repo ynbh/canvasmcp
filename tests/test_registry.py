@@ -137,3 +137,22 @@ def test_schema_rejects_each_missing_required_argument(monkeypatch, name, requir
         assert result["error"] == "missing_argument", (missing, result)
         assert missing in result["message"]
     handler.assert_not_called()
+
+
+def _blank_cases():
+    for name, required in REQUIRED_ARGUMENTS.items():
+        if name == "resolve_course":  # A blank query returns no matches by design.
+            continue
+        for blank in required:
+            yield pytest.param(name, required, blank, id=f"{name}-{blank}")
+
+
+@pytest.mark.parametrize(("name", "required", "blank"), _blank_cases())
+def test_blank_required_argument_never_reaches_canvas(mock_client, name, required, blank):
+    # The schema accepts "" and [], so the tool's own check is what stops these.
+    properties = registry._SPEC_MAP[name].parameters["properties"]
+    args = {arg: _valid_value(properties[arg]) for arg in required}
+    args[blank] = [] if properties[blank].get("type") == "array" else "  "
+    result = registry.dispatch_tool_call(name, args)
+    assert result.get("error") in {"missing_argument", "invalid_argument"}, result
+    assert mock_client.mock_calls == []

@@ -3,6 +3,20 @@ from __future__ import annotations
 from unittest import mock
 
 
+def test_get_today_returns_local_iso_date(monkeypatch):
+    from datetime import date
+
+    import tools.misc
+
+    class FixedDate(date):
+        @classmethod
+        def today(cls):
+            return date(2026, 3, 10)
+
+    monkeypatch.setattr(tools.misc, "date", FixedDate)
+    assert tools.misc.get_today({}) == {"today": "2026-03-10"}
+
+
 class TestListCoursesTool:
     """Tests for list_courses tool handler."""
 
