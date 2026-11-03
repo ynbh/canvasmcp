@@ -114,6 +114,8 @@ Best practice:
 - Use `assignments rubric` when the user asks for grading criteria, rubric categories, points, or how an assignment will be evaluated.
 - Use `--include-assessment` only when the user asks how they were graded or wants rubric feedback for their own submission.
 - Use `--peer-reviews` for completed peer rubric responses when `rubric_assessment` is null; this reads the authenticated submission page without opening a browser tab.
+- `--peer-reviews` returns `peer_rubric_assessments` (reviewer, criteria, points, comments) plus `peer_assessment_source` and `peer_assessment_error`. Anonymous peer reviews come back as `Reviewer N`.
+- It only covers rubric-based peer reviews. An empty list with no error means none were found. Workshops where peers upload worksheets (often assignments with `has_rubric: false`) deliver feedback as `submission_comments` attachments instead. Fetch those with `canvas submissions` using `--student-id self`, then download the attached files.
 - Report rubric title, total points, criteria names, point values, and rating levels.
 - Do not assume `use_rubric_for_grading=true`; report its value if relevant.
 - If the assignment has no rubric, say so and suggest checking assignment details/comments instead.
