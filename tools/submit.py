@@ -525,6 +525,14 @@ def confirm_assignment_submission(args: dict[str, Any]) -> dict[str, Any]:
                 )
             except JobLockTimeout as exc:
                 return tool_error("job_busy", str(exc), pending_job=replacing)
+            # Its fire may have finished while we waited for the lock.
+            current = get_job(str(replacing["id"]))
+            if current is None or current.get("status") != "pending":
+                return tool_error(
+                    "invalid_argument",
+                    "The pending job finished while waiting; preview again",
+                    job=current,
+                )
 
         # Claim the token before any side effect: of two concurrent confirms,
         # the loser stops here having changed nothing.
@@ -608,9 +616,14 @@ def _submit_or_schedule(
                     {"submission_type": submission_type, "file_ids": file_ids, "body": body}
                 ),
             )
-        except CanvasAPIError as exc:
+        except Exception as exc:
             # Kept, not deleted: Canvas may have accepted the submission anyway.
-            return {**canvas_api_tool_error(exc), "uploaded_file_ids": file_ids}
+            error = (
+                canvas_api_tool_error(exc)
+                if isinstance(exc, CanvasAPIError)
+                else tool_error("internal_error", str(exc))
+            )
+            return {**error, "uploaded_file_ids": file_ids}
         notify(f"Submitted {assignment_name}")
         return {
             "ok": True,

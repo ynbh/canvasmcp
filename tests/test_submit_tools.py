@@ -5,7 +5,9 @@ from pathlib import Path
 from unittest import mock
 
 import pytest
+import requests
 
+from auth import CanvasAPIError
 from client import CanvasClient
 from tools.submit import (
     SLEEP_WARNING,
@@ -500,6 +502,23 @@ class TestConfirmAssignmentSubmission:
         submit_mocks["consume_preview"].assert_not_called()
         submit_mocks["client"].upload_submission_file.assert_not_called()
 
+    def test_old_job_that_fired_while_waiting_is_not_replaced(self, submit_mocks, pdf_path):
+        pending = {"id": "oldjob", "status": "pending", "file_ids": ["88"]}
+        fired = {**pending, "status": "submitted"}
+        with (
+            mock.patch("tools.submit.get_pending_job", return_value=pending),
+            mock.patch("tools.submit.get_job", return_value=fired),
+            mock.patch("tools.submit.cancel_job") as cancel_job,
+        ):
+            result = confirm_assignment_submission(
+                {"preview_token": "tok123", "override": True}
+            )
+        assert result["error"] == "invalid_argument"
+        assert result["job"]["status"] == "submitted"
+        submit_mocks["consume_preview"].assert_not_called()
+        submit_mocks["client"].upload_submission_file.assert_not_called()
+        cancel_job.assert_not_called()
+
     def test_lost_token_claim_changes_nothing(self, submit_mocks, pdf_path):
         pending = {"id": "oldjob", "status": "pending", "file_ids": ["88"]}
         submit_mocks["consume_preview"].return_value = None
@@ -545,15 +564,21 @@ class TestConfirmAssignmentSubmission:
         submit_mocks["client"].submit_assignment.assert_not_called()
         submit_mocks["client"].delete_user_file.assert_called_once_with(file_id="99")
 
-    def test_now_submit_failure_keeps_uploaded_files(self, submit_mocks, pdf_path):
-        from auth import CanvasAPIError
-
+    @pytest.mark.parametrize(
+        "exc",
+        [
+            CanvasAPIError("timeout"),
+            requests.ConnectionError("connection reset"),
+            requests.Timeout("read timed out"),
+        ],
+    )
+    def test_now_submit_failure_keeps_uploaded_files(self, submit_mocks, pdf_path, exc):
         stored = _stored_preview(file_paths=[str(pdf_path)], now=True, submit_at=None)
         submit_mocks["load_preview"].return_value = stored
         submit_mocks["consume_preview"].return_value = stored
-        submit_mocks["client"].submit_assignment.side_effect = CanvasAPIError("timeout")
+        submit_mocks["client"].submit_assignment.side_effect = exc
         result = confirm_assignment_submission({"preview_token": "tok123"})
-        assert result["error"]
+        assert result["error"] in {"canvas_api_error", "internal_error"}
         assert result["uploaded_file_ids"] == ["99"]
         submit_mocks["client"].delete_user_file.assert_not_called()
 
