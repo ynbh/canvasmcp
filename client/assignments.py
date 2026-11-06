@@ -79,7 +79,7 @@ class CanvasAssignmentsMixin:
                 include.append("submission")
             if include:
                 params["include"] = include
-            return self._paginate_list(course.get_assignments(**params), limit=limit)
+            return self._take_limit(course.get_assignments(**params), limit=limit)
 
         return self._call_canvas(_load, f"list assignments for course {course_id}")
 
@@ -127,7 +127,7 @@ class CanvasAssignmentsMixin:
             if include:
                 params["include"] = include
             groups = canvas.get_course(course_id).get_assignment_groups(**params)
-            return self._paginate_list(groups, limit=limit)
+            return self._take_limit(groups, limit=limit)
 
         return self._call_canvas(
             _load,
@@ -174,7 +174,7 @@ class CanvasAssignmentsMixin:
                 params["graded_since"] = graded_since
 
             submissions = canvas.get_course(course_id).get_multiple_submissions(**params)
-            return self._paginate_list(submissions, limit=limit)
+            return self._take_limit(submissions, limit=limit)
 
         return self._call_canvas(_load, f"list submissions for course {course_id}")
 
@@ -199,6 +199,6 @@ class CanvasAssignmentsMixin:
             if state:
                 params["state"] = state
             enrollments = canvas.get_course(course_id).get_enrollments(**params)
-            return self._paginate_list(enrollments, limit=limit)
+            return self._take_limit(enrollments, limit=limit)
 
         return self._call_canvas(_load, f"list enrollments for course {course_id}")

@@ -7,11 +7,12 @@ import browser_cookie3
 
 from .chrome_cookies import (
     cookie_query_domain,
+    detect_canvas_base_url,
     list_canvas_cookie_domains,
     read_chrome_cookies,
     select_canvas_session,
 )
-from .errors import CanvasAPIError
+from .errors import CanvasAPIError, base_url_inference_error
 from .profiles import resolve_chrome_profile_path
 
 CanvasSessionCookies = tuple[str, str]
@@ -100,3 +101,27 @@ def list_canvas_cookie_domains_for_profile(
     except Exception as exc:
         detail = str(exc).strip()
         return [], detail or "Chrome cookies could not be read."
+
+
+def resolve_canvas_base_url(
+    *,
+    profile_name: str | None = None,
+    profile_path: str | None = None,
+) -> str:
+    configured = os.getenv("CANVAS_BASE_URL", "").strip()
+    if configured:
+        return configured
+    if os.getenv("CANVAS_COOKIE_BROWSER", "chrome").strip().lower() == "firefox":
+        raise CanvasAPIError("Set CANVAS_BASE_URL when using Firefox cookies.")
+    detected = detect_canvas_base_url(
+        profile_path=resolve_chrome_profile_path(
+            profile_name=profile_name,
+            profile_path=profile_path,
+        )
+    )
+    if detected:
+        return detected
+    raise base_url_inference_error(
+        profile_name=profile_name,
+        profile_path=profile_path,
+    )

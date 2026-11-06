@@ -13,7 +13,7 @@ import pytest
 from rich.console import Console
 from typer.testing import CliRunner
 
-from cli import app, bootstrap
+from cli import app, output as cli_output
 from cli.output import _Pretty, _render
 
 
@@ -24,8 +24,8 @@ def clean_environment(monkeypatch):
 
 
 def invoke_result(monkeypatch, result, args, env=None):
-    monkeypatch.setattr(bootstrap, "_ensure_auth", lambda: None)
-    monkeypatch.setattr(bootstrap, "dispatch_tool_call", lambda *_: result)
+    monkeypatch.setattr(cli_output, "_ensure_auth", lambda: None)
+    monkeypatch.setattr(cli_output, "dispatch_tool_call", lambda *_: result)
     return CliRunner().invoke(app, args, env=env)
 
 

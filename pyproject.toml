@@ -14,13 +14,14 @@ dependencies = [
   "canvasapi>=3.4.0",
   "fastmcp>=2.12.2",
   "jsonschema>=4.0",
+  "requests>=2.31",
   "rich>=13.7.0",
   "typer>=0.12.0",
 ]
 
 [project.scripts]
-canvas = "canvas_cli:main"
-canvas-mcp = "mcp_entry:main"
+canvas = "cli.bootstrap:main"
+canvas-mcp = "canvas_mcp:main"
 
 [tool.uv]
 package = true
@@ -35,7 +36,3 @@ testpaths = ["tests"]
 
 [tool.setuptools]
 packages = ["canvas_mcp", "auth", "cli", "specs", "tools", "client", "schedule"]
-py-modules = [
-  "canvas_cli",
-  "mcp_entry",
-]

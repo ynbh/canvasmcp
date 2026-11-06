@@ -8,14 +8,11 @@ import pytest
 def _client_with_requester():
     """A real CanvasClient whose Canvas requester is a mock, so tests see the exact requests."""
     from client import CanvasClient
-    from client.base import CanvasClientBase
 
     requester = mock.MagicMock()
     canvas = mock.MagicMock()
     setattr(canvas, "_Canvas__requester", requester)
-    patch = mock.patch.object(
-        CanvasClientBase, "_run_with_canvas", lambda self, call: call(canvas)
-    )
+    patch = mock.patch("client.base.Canvas", return_value=canvas)
     return CanvasClient(base_url="https://canvas.example.test"), requester, patch
 
 
@@ -61,7 +58,7 @@ class TestInboxClient:
 
 class TestListInboxConversationsTool:
     def test_defaults_to_inbox_without_sending_a_scope(self, mock_client):
-        from tools import list_inbox_conversations
+        from tools.inbox import list_inbox_conversations
 
         mock_client.list_conversations.return_value = []
         result = list_inbox_conversations({})
@@ -69,14 +66,14 @@ class TestListInboxConversationsTool:
         assert mock_client.list_conversations.call_args.kwargs["scope"] is None
 
     def test_rejects_unknown_scope_and_bad_course_id(self, mock_client):
-        from tools import list_inbox_conversations
+        from specs.registry import dispatch_tool_call
 
-        assert list_inbox_conversations({"scope": "trash"})["error"] == "invalid_argument"
-        assert list_inbox_conversations({"course_id": "../1"})["error"] == "invalid_argument"
+        assert dispatch_tool_call("list_inbox_conversations", {"scope": "trash"})["error"] == "invalid_argument"
+        assert dispatch_tool_call("list_inbox_conversations", {"course_id": "../1"})["error"] == "invalid_argument"
         mock_client.list_conversations.assert_not_called()
 
     def test_maps_summaries(self, mock_client):
-        from tools import list_inbox_conversations
+        from tools.inbox import list_inbox_conversations
 
         mock_client.list_conversations.return_value = [
             {
@@ -101,7 +98,7 @@ class TestListInboxConversationsTool:
 
 
 def test_sent_conversations_fall_back_to_your_last_message(mock_client):
-    from tools import list_inbox_conversations
+    from tools.inbox import list_inbox_conversations
 
     mock_client.list_conversations.return_value = [
         {
@@ -119,13 +116,13 @@ def test_sent_conversations_fall_back_to_your_last_message(mock_client):
 
 class TestGetInboxConversationTool:
     def test_rejects_non_numeric_id(self, mock_client):
-        from tools import get_inbox_conversation
+        from tools.inbox import get_inbox_conversation
 
         assert get_inbox_conversation({"conversation_id": "1/../2"})["error"] == "invalid_argument"
         mock_client.get_conversation.assert_not_called()
 
     def test_maps_messages_and_hides_attachment_urls(self, mock_client):
-        from tools import get_inbox_conversation
+        from tools.inbox import get_inbox_conversation
 
         mock_client.get_conversation.return_value = {
             "id": 7,
@@ -161,7 +158,7 @@ class TestGetInboxConversationTool:
 
 
 def test_keeps_forwarded_messages_and_media_comments(mock_client):
-    from tools import get_inbox_conversation
+    from tools.inbox import get_inbox_conversation
 
     mock_client.get_conversation.return_value = {
         "id": 7,
@@ -203,7 +200,7 @@ def test_keeps_forwarded_messages_and_media_comments(mock_client):
 
 
 def test_long_message_bodies_say_they_were_truncated(mock_client):
-    from tools import get_inbox_conversation
+    from tools.inbox import get_inbox_conversation
     from tools.common import DEFAULT_HTML_CHAR_LIMIT
 
     mock_client.get_conversation.return_value = {
@@ -245,11 +242,11 @@ def test_canvas_errors_become_tool_errors(mock_client, status, code):
 def test_cli_inbox_commands(monkeypatch, argv, tool, args):
     from typer.testing import CliRunner
 
-    from cli import app, bootstrap
+    from cli import app, output as cli_output
 
     calls = []
-    monkeypatch.setattr(bootstrap, "_ensure_auth", lambda: None)
-    monkeypatch.setattr(bootstrap, "dispatch_tool_call", lambda name, a: calls.append((name, a)) or {"ok": True})
+    monkeypatch.setattr(cli_output, "_ensure_auth", lambda: None)
+    monkeypatch.setattr(cli_output, "dispatch_tool_call", lambda name, a: calls.append((name, a)) or {"ok": True})
     result = CliRunner().invoke(app, ["--output", "json", *argv])
     assert result.exit_code == 0, result.output
     assert calls == [(tool, args)]

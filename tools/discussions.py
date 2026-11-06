@@ -5,15 +5,12 @@ from typing import Any
 from tools.common import (
     assignment_to_discussion_topic,
     canvas_client,
-    clamp,
     count_discussion_entries,
     first_non_none,
     id_aliases,
-    invalid_argument,
     is_announcement_topic,
     looks_like_canvas_id,
     map_discussion_entry,
-    missing_argument,
     tool_error,
     truncate_html,
 )
@@ -56,14 +53,10 @@ def _map_discussion_topic_item(
 
 def list_discussion_topics(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
-    if not course_id:
-        return missing_argument("course_id")
 
     search_in = str(args.get("search_in", "title")).strip().lower()
-    if search_in not in {"title", "title_or_message"}:
-        return invalid_argument("search_in must be 'title' or 'title_or_message'")
 
-    limit = clamp(args.get("limit"), 100)
+    limit = int(args.get("limit", 100))
     include_announcements = bool(args.get("include_announcements", False))
     only_graded = bool(args.get("only_graded", False))
     exact_title = bool(args.get("exact_title", False))
@@ -75,9 +68,6 @@ def list_discussion_topics(args: dict[str, Any]) -> dict[str, Any]:
     api_topics = client.list_discussion_topics(
         course_id=course_id,
         search=api_search or None,
-        only_graded=False,
-        exact_title=False,
-        include_announcements=True,
         search_in=search_in,
         limit=scan_limit,
     )
@@ -159,14 +149,10 @@ def list_discussion_topics(args: dict[str, Any]) -> dict[str, Any]:
 def get_discussion_entries(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
     topic_id = str(args.get("topic_id", "")).strip()
-    if not course_id:
-        return missing_argument("course_id")
-    if not topic_id:
-        return missing_argument("topic_id")
 
     include_replies = bool(args.get("include_replies", True))
     include_participants = bool(args.get("include_participants", True))
-    limit = clamp(args.get("limit"), 200)
+    limit = int(args.get("limit", 200))
 
     context = resolve_discussion_topic_context(course_id, topic_id)
 

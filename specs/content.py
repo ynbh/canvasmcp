@@ -1,12 +1,16 @@
 from __future__ import annotations
 
-from tools import (
-    download_course_file,
+from tools.discussions import (
     get_discussion_entries,
-    list_announcements,
+    list_discussion_topics,
+)
+from tools.files import (
+    download_course_file,
     list_course_files,
     list_course_folders,
-    list_discussion_topics,
+)
+from tools.misc import (
+    list_announcements,
     list_todo_items,
 )
 

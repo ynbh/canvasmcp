@@ -10,7 +10,6 @@ from urllib.parse import unquote, urlparse
 from auth import CanvasAPIError
 from client import create_canvas_client_from_env
 
-MAX_TOOL_LIMIT = 300
 DEFAULT_HTML_CHAR_LIMIT = 12000
 
 
@@ -21,16 +20,6 @@ def normalize(text: str | None) -> str:
         ch.lower() if ch.isalnum() or ch.isspace() else " " for ch in text
     )
     return " ".join(cleaned.split())
-
-
-def clamp(value: int | None, default: int) -> int:
-    if value is None:
-        return default
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError):
-        return default
-    return max(1, min(parsed, MAX_TOOL_LIMIT))
 
 
 def download_dir() -> Path:
@@ -79,10 +68,6 @@ def assignment_submission_download_path(
 @lru_cache(maxsize=1)
 def canvas_client():
     return create_canvas_client_from_env()
-
-
-def reset_canvas_client() -> None:
-    canvas_client.cache_clear()
 
 
 def tool_error(code: str, message: str, **extra: Any) -> dict[str, Any]:

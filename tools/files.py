@@ -13,20 +13,16 @@ from mcp.types import (
 
 from tools.common import (
     canvas_client,
-    clamp,
     download_dir,
     download_file_path,
     id_aliases,
-    missing_argument,
 )
 
 
 def list_course_files(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
-    if not course_id:
-        return missing_argument("course_id")
 
-    limit = clamp(args.get("limit"), 100)
+    limit = int(args.get("limit", 100))
     files = canvas_client().list_files(
         course_id=course_id,
         search=str(args.get("search")) if args.get("search") else None,
@@ -56,10 +52,6 @@ def list_course_files(args: dict[str, Any]) -> dict[str, Any]:
 def download_course_file(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
     file_id = str(args.get("file_id", "")).strip()
-    if not course_id:
-        return missing_argument("course_id")
-    if not file_id:
-        return missing_argument("file_id")
 
     force_refresh = bool(args.get("force_refresh", False))
     root = download_dir()
@@ -156,10 +148,8 @@ def read_course_file(
 
 def list_course_folders(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
-    if not course_id:
-        return missing_argument("course_id")
 
-    limit = clamp(args.get("limit"), 150)
+    limit = int(args.get("limit", 150))
     folders = canvas_client().list_folders(course_id=course_id, limit=limit)
     items = [
         {
@@ -181,11 +171,9 @@ def list_course_folders(args: dict[str, Any]) -> dict[str, Any]:
 
 def list_modules(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
-    if not course_id:
-        return missing_argument("course_id")
 
-    limit = clamp(args.get("limit"), 100)
-    items_limit = clamp(args.get("items_limit"), 100)
+    limit = int(args.get("limit", 100))
+    items_limit = int(args.get("items_limit", 100))
     modules = canvas_client().list_modules(
         course_id=course_id,
         search=str(args.get("search")) if args.get("search") else None,

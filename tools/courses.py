@@ -4,11 +4,8 @@ from typing import Any
 
 from tools.common import (
     canvas_client,
-    clamp,
     course_tab_target_url,
     id_aliases,
-    invalid_argument,
-    missing_argument,
     normalize,
 )
 
@@ -78,7 +75,7 @@ def relevance_score(query: str, course: dict[str, Any]) -> float:
 def list_courses(args: dict[str, Any]) -> dict[str, Any]:
     favorites_only = bool(args.get("favorites_only", True))
     search = args.get("search")
-    limit = clamp(args.get("limit"), 50)
+    limit = int(args.get("limit", 50))
     courses = canvas_client().list_courses(
         favorites_only=favorites_only,
         search=str(search) if search else None,
@@ -98,7 +95,7 @@ def resolve_course(args: dict[str, Any]) -> dict[str, Any]:
         return {"count": 0, "matches": []}
 
     favorites_only = bool(args.get("favorites_only", True))
-    limit = clamp(args.get("limit"), 5)
+    limit = int(args.get("limit", 5))
 
     courses = canvas_client().list_courses(
         favorites_only=favorites_only,
@@ -115,8 +112,6 @@ def resolve_course(args: dict[str, Any]) -> dict[str, Any]:
 
 def get_course_overview(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
-    if not course_id:
-        return missing_argument("course_id")
 
     course = canvas_client().get_course(
         course_id=course_id,
@@ -163,15 +158,9 @@ def get_course_overview(args: dict[str, Any]) -> dict[str, Any]:
 
 def get_course_syllabus(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
-    if not course_id:
-        return missing_argument("course_id")
 
     include_body = bool(args.get("include_body", True))
-    try:
-        body_char_limit = int(args.get("body_char_limit", 12000))
-    except (TypeError, ValueError):
-        body_char_limit = 12000
-    body_char_limit = max(200, min(body_char_limit, 200000))
+    body_char_limit = int(args.get("body_char_limit", 12000))
 
     course = canvas_client().get_course(
         course_id=course_id,
@@ -198,14 +187,12 @@ def get_course_syllabus(args: dict[str, Any]) -> dict[str, Any]:
 
 def list_course_pages(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
-    if not course_id:
-        return missing_argument("course_id")
 
     published_only = args.get("published_only")
     if published_only is not None:
         published_only = bool(published_only)
 
-    limit = clamp(args.get("limit"), 100)
+    limit = int(args.get("limit", 100))
     pages = canvas_client().list_pages(
         course_id=course_id,
         search=str(args.get("search")) if args.get("search") else None,
@@ -233,10 +220,8 @@ def list_course_pages(args: dict[str, Any]) -> dict[str, Any]:
 
 def list_course_tabs(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
-    if not course_id:
-        return missing_argument("course_id")
 
-    limit = clamp(args.get("limit"), 100)
+    limit = int(args.get("limit", 100))
     tabs = canvas_client().list_tabs(course_id=course_id, limit=limit)
     items = [map_course_tab(tab) for tab in tabs]
     return {"course_id": course_id, "count": len(items), "tabs": items}
@@ -245,10 +230,6 @@ def list_course_tabs(args: dict[str, Any]) -> dict[str, Any]:
 def get_course_tab(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
     tab_id = str(args.get("tab_id", "")).strip()
-    if not course_id:
-        return missing_argument("course_id")
-    if not tab_id:
-        return missing_argument("tab_id")
 
     include_target = bool(args.get("include_target", True))
     tab = canvas_client().get_tab(course_id=course_id, tab_id=tab_id)
@@ -272,14 +253,10 @@ def get_course_tab(args: dict[str, Any]) -> dict[str, Any]:
 
 def list_course_people(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
-    if not course_id:
-        return missing_argument("course_id")
 
     enrollment_types = args.get("enrollment_types")
-    if enrollment_types is not None and not isinstance(enrollment_types, list):
-        return invalid_argument("enrollment_types must be an array of strings")
 
-    limit = clamp(args.get("limit"), 100)
+    limit = int(args.get("limit", 100))
     users = canvas_client().list_course_users(
         course_id=course_id,
         search=str(args.get("search")) if args.get("search") else None,

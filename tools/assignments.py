@@ -5,10 +5,8 @@ from typing import Any
 from auth import CanvasAPIError
 from tools.common import (
     canvas_client,
-    clamp,
     extract_discussion_topic_id,
     id_aliases,
-    missing_argument,
     short_canvas_id,
 )
 
@@ -70,11 +68,9 @@ def _assignment_details(
 
 def list_course_assignments(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
-    if not course_id:
-        return missing_argument("course_id")
 
     include_submission = bool(args.get("include_submission", False))
-    limit = clamp(args.get("limit"), 100)
+    limit = int(args.get("limit", 100))
     assignments = canvas_client().list_assignments(
         course_id=course_id,
         search=str(args.get("search")) if args.get("search") else None,
@@ -97,10 +93,6 @@ def list_course_assignments(args: dict[str, Any]) -> dict[str, Any]:
 def get_assignment_details(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
     assignment_id = str(args.get("assignment_id", "")).strip()
-    if not course_id:
-        return missing_argument("course_id")
-    if not assignment_id:
-        return missing_argument("assignment_id")
 
     assignment = canvas_client().get_assignment(
         course_id=course_id,
@@ -147,10 +139,6 @@ def _peer_rubric_feedback(
 def get_assignment_rubric(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
     assignment_id = str(args.get("assignment_id", "")).strip()
-    if not course_id:
-        return missing_argument("course_id")
-    if not assignment_id:
-        return missing_argument("assignment_id")
 
     include_assessment = bool(args.get("include_assessment", False))
     include_peer_reviews = bool(args.get("include_peer_reviews", False))
@@ -227,12 +215,10 @@ def get_assignment_rubric(args: dict[str, Any]) -> dict[str, Any]:
 
 def list_assignment_groups(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
-    if not course_id:
-        return missing_argument("course_id")
 
     include_assignments = bool(args.get("include_assignments", False))
     include_submission = bool(args.get("include_submission", False))
-    limit = clamp(args.get("limit"), 100)
+    limit = int(args.get("limit", 100))
     groups = canvas_client().list_assignment_groups(
         course_id=course_id,
         include_assignments=include_assignments,

@@ -12,7 +12,6 @@ from tools.common import (
     id_aliases,
     is_forbidden_error,
     is_not_found_error,
-    missing_argument,
     parse_canvas_course_resource,
     parse_canvas_url_path,
     recommended_tool_for_resource,
@@ -158,7 +157,6 @@ def resolve_discussion_topic_context(
         try:
             listed_topics = api_client.list_discussion_topics(
                 course_id=course_id,
-                include_announcements=True,
                 limit=300,
             )
         except CanvasAPIError as exc:
@@ -342,8 +340,6 @@ def resolve_canvas_resource_details(
 
 def resolve_canvas_url(args: dict[str, Any]) -> dict[str, Any]:
     url = str(args.get("url", "")).strip()
-    if not url:
-        return missing_argument("url")
 
     parsed, path, parts = parse_canvas_url_path(url)
     course_id_raw, resource_type, resource_id_raw = parse_canvas_course_resource(parts)

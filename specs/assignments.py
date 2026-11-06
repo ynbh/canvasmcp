@@ -1,15 +1,19 @@
 from __future__ import annotations
 
-from tools import (
-    cancel_scheduled_submission,
-    confirm_assignment_submission,
+from tools.assignments import (
     get_assignment_details,
     get_assignment_rubric,
-    get_scheduled_submission,
-    install_assignment_submission_files,
     list_assignment_groups,
     list_course_assignments,
+)
+from tools.submissions import (
+    install_assignment_submission_files,
     list_course_submissions,
+)
+from tools.submit import (
+    cancel_scheduled_submission,
+    confirm_assignment_submission,
+    get_scheduled_submission,
     list_scheduled_submissions,
     preview_assignment_submission,
 )

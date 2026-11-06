@@ -21,27 +21,6 @@ class TestNormalize:
         assert _normalize("  lots   of   spaces  ") == "lots of spaces"
 
 
-class TestClamp:
-    """Tests for _clamp."""
-
-    def test_clamps_to_range(self):
-        from tools.common import clamp as _clamp
-
-        assert _clamp(0, 50) == 1
-        assert _clamp(500, 50) == 300
-        assert _clamp(100, 50) == 100
-
-    def test_returns_default_for_none(self):
-        from tools.common import clamp as _clamp
-
-        assert _clamp(None, 50) == 50
-
-    def test_returns_default_for_invalid(self):
-        from tools.common import clamp as _clamp
-
-        assert _clamp("abc", 50) == 50
-
-
 class TestRelevanceScore:
     """Tests for _relevance_score."""
 

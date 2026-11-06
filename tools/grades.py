@@ -2,13 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from tools.common import canvas_client, missing_argument
+from tools.common import canvas_client
 
 
 def get_course_grade_summary(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
-    if not course_id:
-        return missing_argument("course_id")
 
     student_id = str(args.get("student_id", "self")).strip() or "self"
     client = canvas_client()

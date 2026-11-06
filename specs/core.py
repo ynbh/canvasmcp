@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from tools import get_today, list_courses, resolve_course
+from tools.courses import (
+    list_courses,
+    resolve_course,
+)
+from tools.misc import get_today
 
 from specs.schema import ToolSpec, tool_spec
 
