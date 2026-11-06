@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from typing import Any
 
 from canvasapi import Canvas
@@ -10,51 +9,15 @@ from .base import MAX_PER_PAGE, _CanvasDictItem, _canvas_exception_for_status
 
 
 class CanvasContentMixin:
-    def list_discussion_topics(
-        self,
-        *,
-        course_id: str,
-        search: str | None = None,
-        search_in: str = "title",
-        limit: int = 100,
-    ) -> list[dict[str, Any]]:
-        """List topics, announcements included, filtered by `search` when given."""
-
-        def _id_aliases(raw: Any) -> set[str]:
-            value = str(raw or "").strip()
-            if not value:
-                return set()
-            aliases = {value}
-            tilde_match = re.fullmatch(r"(\d+)~(\d+)", value)
-            if tilde_match:
-                aliases.add(f"{tilde_match.group(1)}000000{tilde_match.group(2)}")
-            full_match = re.fullmatch(r"(\d+)000000(\d+)", value)
-            if full_match:
-                aliases.add(f"{full_match.group(1)}~{full_match.group(2)}")
-                aliases.add(full_match.group(2))
-            return aliases
-
-        def _matches(topic: dict[str, Any], query: str, query_aliases: set[str]) -> bool:
-            fields = ["title", "message"] if search_in == "title_or_message" else ["title"]
-            return any(query in str(topic.get(f, "")).casefold() for f in fields) or bool(
-                query_aliases
-                & (_id_aliases(topic.get("id")) | _id_aliases(topic.get("assignment_id")))
-            )
+    def list_discussion_topics(self, *, course_id: str, limit: int = 100) -> list[dict[str, Any]]:
+        """List topics, announcements included."""
 
         def _load(canvas: Canvas) -> list[dict[str, Any]]:
             course = canvas.get_course(course_id)
-            topics = self._take_limit(
-                course.get_discussion_topics(
-                    only_announcements=False,
-                    per_page=MAX_PER_PAGE,
-                ),
-                300 if search else limit,
+            return self._take_limit(
+                course.get_discussion_topics(only_announcements=False, per_page=MAX_PER_PAGE),
+                limit,
             )
-            if search:
-                query = search.casefold().strip()
-                query_aliases = _id_aliases(search)
-                topics = [topic for topic in topics if _matches(topic, query, query_aliases)]
-            return topics[: max(1, min(int(limit), 300))]
 
         return self._call_canvas(
             _load,

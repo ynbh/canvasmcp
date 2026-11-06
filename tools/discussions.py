@@ -59,12 +59,7 @@ def list_discussion_topics(args: dict[str, Any]) -> dict[str, Any]:
     client = canvas_client()
 
     api_search = None if exact_title or looks_like_canvas_id(search_value) else search_value
-    api_topics = client.list_discussion_topics(
-        course_id=course_id,
-        search=api_search or None,
-        search_in=search_in,
-        limit=scan_limit,
-    )
+    api_topics = client.list_discussion_topics(course_id=course_id, limit=scan_limit)
 
     assignment_topics: list[dict[str, Any]] = []
     needs_assignment_topics = only_graded or bool(search_value) or not api_topics
@@ -98,16 +93,13 @@ def list_discussion_topics(args: dict[str, Any]) -> dict[str, Any]:
 
     if search_value:
         query = search_value.casefold()
-        query_aliases = set(id_aliases(search_value, course_id=course_id))
+        query_aliases = set(id_aliases(search_value))
 
         def matches(topic: dict[str, Any]) -> bool:
-            topic_aliases = set(id_aliases(str(topic.get("id", "")), course_id=course_id))
+            topic_aliases = set(id_aliases(str(topic.get("id", ""))))
             assignment_value = topic.get("assignment_id")
             assignment_aliases = set(
-                id_aliases(
-                    str(assignment_value) if assignment_value is not None else "",
-                    course_id=course_id,
-                )
+                id_aliases(str(assignment_value) if assignment_value is not None else "")
             )
             if query_aliases and query_aliases & (topic_aliases | assignment_aliases):
                 return True

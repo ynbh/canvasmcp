@@ -108,93 +108,28 @@ def looks_like_canvas_id(value: str) -> bool:
     )
 
 
-def course_id_prefix(course_id: str | None) -> str | None:
-    if not course_id:
-        return None
-    trimmed = str(course_id).strip()
-    if not trimmed:
-        return None
-    tilde_match = re.fullmatch(r"(\d+)~(\d+)", trimmed)
-    if tilde_match:
-        return tilde_match.group(1)
-    full_match = re.fullmatch(r"(\d+)000000(\d+)", trimmed)
-    if full_match:
-        return full_match.group(1)
-    if trimmed.isdigit() and len(trimmed) >= 4:
-        return trimmed[:4]
-    return None
-
-
-def expand_canvas_id(raw_id: str, *, course_id: str | None = None) -> str:
-    trimmed = str(raw_id).strip()
-    if not trimmed:
-        return trimmed
-
-    tilde_match = re.fullmatch(r"(\d+)~(\d+)", trimmed)
-    if tilde_match:
-        return f"{tilde_match.group(1)}000000{tilde_match.group(2)}"
-
-    if not trimmed.isdigit():
-        return trimmed
-
-    if "000000" in trimmed:
-        return trimmed
-
-    prefix = course_id_prefix(course_id)
-    if prefix:
-        return f"{prefix}000000{trimmed}"
-
-    return trimmed
-
-
-def collapse_canvas_id(raw_id: str) -> str:
-    match = re.fullmatch(r"(\d+)000000(\d+)", raw_id.strip())
-    if not match:
-        return raw_id
-    return f"{match.group(1)}~{match.group(2)}"
+# Canvas global IDs are shard * 10**13 + local ID; "shard~local" is the short form.
+IDS_PER_SHARD = 10**13
 
 
 def short_canvas_id(raw_id: str) -> str:
-    match = re.fullmatch(r"(\d+)000000(\d+)", raw_id.strip())
-    if match:
-        return match.group(2)
-    tilde_match = re.fullmatch(r"(\d+)~(\d+)", raw_id.strip())
+    """Return the local ID of a "shard~local" or global Canvas ID; other values unchanged."""
+    trimmed = str(raw_id).strip()
+    tilde_match = re.fullmatch(r"\d+~(\d+)", trimmed)
     if tilde_match:
-        return tilde_match.group(2)
-    return raw_id.strip()
+        return str(int(tilde_match.group(1)))
+    if trimmed.isdigit() and int(trimmed) >= IDS_PER_SHARD:
+        return str(int(trimmed) % IDS_PER_SHARD)
+    return trimmed
 
 
-def id_aliases(raw_id: str, *, course_id: str | None = None) -> list[str]:
+def id_aliases(raw_id: str) -> list[str]:
+    """The ID as given, then its local form if that differs."""
     trimmed = str(raw_id).strip()
     if not trimmed:
         return []
-
-    candidates: list[str] = []
-    expanded = expand_canvas_id(trimmed, course_id=course_id)
-    for value in (
-        trimmed,
-        expanded,
-        collapse_canvas_id(expanded),
-        short_canvas_id(expanded),
-    ):
-        if value and value not in candidates:
-            candidates.append(value)
-    return candidates
-
-
-def candidate_ids_for_lookup(
-    raw_id: str, *, course_id: str | None = None
-) -> list[str]:
-    aliases = id_aliases(raw_id, course_id=course_id)
-    if not aliases:
-        return []
-
-    expanded = expand_canvas_id(raw_id, course_id=course_id)
-    ordered: list[str] = []
-    for value in [expanded, *aliases]:
-        if value and value not in ordered:
-            ordered.append(value)
-    return ordered
+    short = short_canvas_id(trimmed)
+    return [trimmed] if short == trimmed else [trimmed, short]
 
 
 def extract_discussion_topic_id(item: dict[str, Any]) -> str | None:

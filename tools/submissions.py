@@ -9,7 +9,6 @@ from tools.common import (
     canvas_api_tool_error,
     canvas_client,
     download_dir,
-    expand_canvas_id,
     is_forbidden_error,
     short_canvas_id,
     tool_error,
@@ -199,7 +198,7 @@ def install_assignment_submission_files(args: dict[str, Any]) -> dict[str, Any]:
     assignment_id = str(args.get("assignment_id", "")).strip()
 
     api_assignment_id = short_canvas_id(assignment_id)
-    canonical_assignment_id = expand_canvas_id(api_assignment_id, course_id=course_id)
+    canonical_assignment_id = api_assignment_id
     force_refresh = bool(args.get("force_refresh", False))
     client = canvas_client()
 
