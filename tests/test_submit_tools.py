@@ -533,20 +533,23 @@ class TestConfirmAssignmentSubmission:
         cancel_job.assert_not_called()
         submit_mocks["client"].upload_submission_file.assert_not_called()
 
+    @pytest.mark.parametrize(
+        "exc",
+        [CanvasAPIError("upload broke", status_code=500), requests.ConnectionError("reset")],
+    )
     def test_partial_upload_failure_deletes_uploaded_files(
-        self, submit_mocks, pdf_path, txt_path
+        self, submit_mocks, pdf_path, txt_path, exc
     ):
-        from auth import CanvasAPIError
-
         stored = _stored_preview(file_paths=[str(pdf_path), str(txt_path)])
         submit_mocks["load_preview"].return_value = stored
         submit_mocks["consume_preview"].return_value = stored
         submit_mocks["client"].upload_submission_file.side_effect = [
             {"id": "99", "display_name": "essay.pdf"},
-            CanvasAPIError("upload broke", status_code=500),
+            exc,
         ]
         result = confirm_assignment_submission({"preview_token": "tok123"})
-        assert result["error"]
+        assert result["error"] in {"canvas_api_error", "internal_error"}
+        assert result["file_cleanup"] == [{"file_id": "99", "deleted": True}]
         submit_mocks["client"].delete_user_file.assert_called_once_with(file_id="99")
         submit_mocks["create_job"].assert_not_called()
         submit_mocks["install_job"].assert_not_called()

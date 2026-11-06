@@ -316,6 +316,13 @@ def _load_assignment(course_id: str, assignment_id: str) -> dict[str, Any]:
     )
 
 
+def _error_for(exc: Exception) -> dict[str, Any]:
+    """The error dispatch would return for exc, so callers can attach cleanup details."""
+    if isinstance(exc, CanvasAPIError):
+        return canvas_api_tool_error(exc)
+    return tool_error("internal_error", str(exc))
+
+
 def _abort(error: dict[str, Any], file_ids: list[str]) -> dict[str, Any]:
     """Return an error after deleting files this confirm uploaded but won't use."""
     return {**error, "file_cleanup": delete_uploaded_files(file_ids)}
@@ -591,11 +598,8 @@ def _submit_or_schedule(
                 file_ids=file_ids,
                 filenames=filenames,
             )
-        except CanvasAPIError as exc:
-            return _abort(canvas_api_tool_error(exc), file_ids)
-        except Exception:
-            delete_uploaded_files(file_ids)
-            raise
+        except Exception as exc:
+            return _abort(_error_for(exc), file_ids)
 
     if now:
         auth_status = _auth_status()
@@ -618,12 +622,7 @@ def _submit_or_schedule(
             )
         except Exception as exc:
             # Kept, not deleted: Canvas may have accepted the submission anyway.
-            error = (
-                canvas_api_tool_error(exc)
-                if isinstance(exc, CanvasAPIError)
-                else tool_error("internal_error", str(exc))
-            )
-            return {**error, "uploaded_file_ids": file_ids}
+            return {**_error_for(exc), "uploaded_file_ids": file_ids}
         notify(f"Submitted {assignment_name}")
         return {
             "ok": True,

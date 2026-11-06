@@ -392,7 +392,7 @@ def _submission(view: _Pretty, result: dict[str, Any], tool_name: str) -> None:
             f"canvas assignments submissions status {shlex.quote(str(job_id))}",
             exact=True,
         )
-    if cleanup:
+    if cleanup and "file_cleanup" not in (result.get("job") or {}):  # job view already shows it
         view.collection("file_cleanup", cleanup, full=True)
 
 

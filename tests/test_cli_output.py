@@ -327,3 +327,9 @@ def test_long_filename_list_is_copyable():
         "get_scheduled_submission",
     )
     assert filename in [line.strip() for line in text.splitlines()]
+
+
+def test_cancel_shows_file_cleanup_once():
+    job = {"id": "j1", "status": "cancelled", "file_cleanup": [{"file_id": "99", "deleted": True}]}
+    out = render({"ok": True, "job": job, "file_cleanup": job["file_cleanup"]}, "cancel_scheduled_submission", width=100)
+    assert out.lower().count("file cleanup") == 1
