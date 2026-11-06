@@ -198,7 +198,6 @@ def install_assignment_submission_files(args: dict[str, Any]) -> dict[str, Any]:
     assignment_id = str(args.get("assignment_id", "")).strip()
 
     api_assignment_id = short_canvas_id(assignment_id)
-    canonical_assignment_id = api_assignment_id
     force_refresh = bool(args.get("force_refresh", False))
     client = canvas_client()
 
@@ -216,12 +215,12 @@ def install_assignment_submission_files(args: dict[str, Any]) -> dict[str, Any]:
 
     root = download_dir()
     assignment_dir = assignment_submission_download_dir(
-        root, course_id, canonical_assignment_id
+        root, course_id, api_assignment_id
     )
 
     base_response: dict[str, Any] = {
         "course_id": course_id,
-        "assignment_id": canonical_assignment_id,
+        "assignment_id": api_assignment_id,
         "submission_id": None,
         "download_dir": str(assignment_dir),
         "count": 0,
@@ -286,7 +285,7 @@ def install_assignment_submission_files(args: dict[str, Any]) -> dict[str, Any]:
             target_path = assignment_submission_download_path(
                 root,
                 course_id,
-                canonical_assignment_id,
+                api_assignment_id,
                 submission_id,
                 file_id,
                 display_name,

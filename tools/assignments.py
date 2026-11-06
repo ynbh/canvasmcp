@@ -13,7 +13,6 @@ from tools.common import (
 def _assignment_summary(
     assignment: dict[str, Any],
     *,
-    course_id: str,
     include_submission: bool = False,
     keep_submission_key: bool = False,
 ) -> dict[str, Any]:
@@ -37,12 +36,8 @@ def _assignment_summary(
     return summary
 
 
-def _assignment_details(
-    assignment: dict[str, Any],
-    *,
-    course_id: str,
-) -> dict[str, Any]:
-    details = _assignment_summary(assignment, course_id=course_id)
+def _assignment_details(assignment: dict[str, Any]) -> dict[str, Any]:
+    details = _assignment_summary(assignment)
     details.update(
         {
             "description": assignment.get("description"),
@@ -77,7 +72,6 @@ def list_course_assignments(args: dict[str, Any]) -> dict[str, Any]:
     items = [
         _assignment_summary(
             assignment,
-            course_id=course_id,
             include_submission=include_submission,
         )
         for assignment in assignments
@@ -98,7 +92,7 @@ def get_assignment_details(args: dict[str, Any]) -> dict[str, Any]:
 
     return {
         "course_id": course_id,
-        "assignment": _assignment_details(assignment, course_id=course_id),
+        "assignment": _assignment_details(assignment),
     }
 
 
@@ -229,7 +223,6 @@ def list_assignment_groups(args: dict[str, Any]) -> dict[str, Any]:
                     continue
                 item = _assignment_summary(
                     assignment,
-                    course_id=course_id,
                     include_submission=include_submission,
                     keep_submission_key=True,
                 )

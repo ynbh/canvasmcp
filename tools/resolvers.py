@@ -69,7 +69,6 @@ def _try_discussion_topic(
 def _find_topic_in_list(
     topics: list[dict[str, Any]],
     *,
-    course_id: str,
     topic_candidates: list[str],
 ) -> dict[str, Any] | None:
     for topic in topics:
@@ -161,7 +160,6 @@ def resolve_discussion_topic_context(
         else:
             resolved_topic = _find_topic_in_list(
                 listed_topics,
-                course_id=course_id,
                 topic_candidates=topic_candidates,
             )
             if resolved_topic and resolved_topic.get("id") is not None:

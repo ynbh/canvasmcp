@@ -20,9 +20,7 @@ from tools.resolvers import (
 )
 
 
-def _map_discussion_topic_item(
-    topic: dict[str, Any], *, course_id: str
-) -> dict[str, Any]:
+def _map_discussion_topic_item(topic: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": str(topic.get("id", "")),
         "title": topic.get("title", "Untitled discussion"),
@@ -115,7 +113,7 @@ def list_discussion_topics(args: dict[str, Any]) -> dict[str, Any]:
         topics = [topic for topic in topics if matches(topic)]
 
     items = [
-        _map_discussion_topic_item(topic, course_id=course_id)
+        _map_discussion_topic_item(topic)
         for topic in topics[:limit]
     ]
     return {
