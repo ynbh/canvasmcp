@@ -10,7 +10,6 @@ from tools.common import (
     canvas_client,
     download_dir,
     expand_canvas_id,
-    id_aliases,
     is_forbidden_error,
     short_canvas_id,
     tool_error,
@@ -141,11 +140,6 @@ def list_course_submissions(args: dict[str, Any]) -> dict[str, Any]:
             "assignment_id": str(submission["assignment_id"])
             if submission.get("assignment_id") is not None
             else None,
-            "assignment_id_aliases": id_aliases(
-                str(submission["assignment_id"]), course_id=course_id
-            )
-            if submission.get("assignment_id") is not None
-            else [],
             "assignment_name": assignment.get("name")
             if isinstance(assignment, dict)
             else None,

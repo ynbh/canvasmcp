@@ -6,7 +6,6 @@ from auth import CanvasAPIError
 from tools.common import (
     canvas_client,
     extract_discussion_topic_id,
-    id_aliases,
     short_canvas_id,
 )
 
@@ -22,7 +21,6 @@ def _assignment_summary(
     discussion_topic_id = extract_discussion_topic_id(assignment)
     summary = {
         "id": assignment_id,
-        "id_aliases": id_aliases(assignment_id, course_id=course_id),
         "name": assignment.get("name", "Untitled assignment"),
         "due_at": assignment.get("due_at"),
         "unlock_at": assignment.get("unlock_at"),
@@ -33,9 +31,6 @@ def _assignment_summary(
         "has_rubric": bool(assignment.get("rubric")),
         "use_rubric_for_grading": assignment.get("use_rubric_for_grading"),
         "discussion_topic_id": discussion_topic_id,
-        "discussion_topic_id_aliases": id_aliases(
-            str(discussion_topic_id or ""), course_id=course_id
-        ),
     }
     if include_submission or keep_submission_key:
         summary["submission"] = assignment.get("submission")
@@ -180,7 +175,6 @@ def get_assignment_rubric(args: dict[str, Any]) -> dict[str, Any]:
     result = {
         "course_id": course_id,
         "assignment_id": assignment_id_value,
-        "assignment_id_aliases": id_aliases(assignment_id_value, course_id=course_id),
         "assignment_name": assignment.get("name", "Untitled assignment"),
         "points_possible": assignment.get("points_possible"),
         "html_url": assignment.get("html_url"),

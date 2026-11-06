@@ -52,9 +52,6 @@ FIELD_ORDER = {
     "auth": "auth_verified auth_status error selected_chrome_profile resolved_canvas_base_url auth_mode",
 }
 SECONDARY = {
-    "id_aliases",
-    "assignment_id_aliases",
-    "discussion_topic_id_aliases",
     "avatar_image_url",
     "items_url",
     "plist_label",

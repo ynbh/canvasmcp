@@ -43,3 +43,11 @@ def test_open_world_hint_is_not_closed():
 
 def test_every_write_tool_exists():
     assert WRITE_TOOLS <= {tool.name for tool in _tools()}
+
+
+def test_mcp_advertises_each_spec_schema_unchanged():
+    from specs.registry import TOOL_SPECS
+
+    advertised = {tool.name: tool.parameters for tool in _tools()}
+    for spec in TOOL_SPECS:
+        assert advertised[spec.name] == spec.parameters, spec.name

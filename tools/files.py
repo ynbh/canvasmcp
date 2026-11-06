@@ -15,7 +15,6 @@ from tools.common import (
     canvas_client,
     download_dir,
     download_file_path,
-    id_aliases,
 )
 
 
@@ -33,7 +32,6 @@ def list_course_files(args: dict[str, Any]) -> dict[str, Any]:
     items = [
         {
             "id": str(file.get("id", "")),
-            "id_aliases": id_aliases(str(file.get("id", ""))),
             "display_name": file.get("display_name"),
             "filename": file.get("filename"),
             "content_type": file.get("content_type"),
@@ -154,7 +152,6 @@ def list_course_folders(args: dict[str, Any]) -> dict[str, Any]:
     items = [
         {
             "id": str(folder.get("id", "")),
-            "id_aliases": id_aliases(str(folder.get("id", ""))),
             "name": folder.get("name", "Untitled folder"),
             "full_name": folder.get("full_name"),
             "parent_folder_id": str(folder["parent_folder_id"])
@@ -210,7 +207,6 @@ def list_modules(args: dict[str, Any]) -> dict[str, Any]:
         items.append(
             {
                 "id": str(module.get("id", "")),
-                "id_aliases": id_aliases(str(module.get("id", ""))),
                 "name": module.get("name", "Untitled module"),
                 "position": module.get("position"),
                 "unlock_at": module.get("unlock_at"),

@@ -25,7 +25,6 @@ def _map_discussion_topic_item(
 ) -> dict[str, Any]:
     return {
         "id": str(topic.get("id", "")),
-        "id_aliases": id_aliases(str(topic.get("id", "")), course_id=course_id),
         "title": topic.get("title", "Untitled discussion"),
         "message": truncate_html(topic.get("message")),
         "posted_at": topic.get("posted_at"),
@@ -40,11 +39,6 @@ def _map_discussion_topic_item(
         "assignment_id": str(topic["assignment_id"])
         if topic.get("assignment_id") is not None
         else None,
-        "assignment_id_aliases": id_aliases(
-            str(topic["assignment_id"]), course_id=course_id
-        )
-        if topic.get("assignment_id") is not None
-        else [],
         "points_possible": topic.get("points_possible"),
         "html_url": topic.get("html_url"),
         "source": topic.get("source", "discussion_topics_api"),
@@ -269,10 +263,8 @@ def get_discussion_entries(args: dict[str, Any]) -> dict[str, Any]:
     return {
         "course_id": course_id,
         "requested_topic_id": topic_id,
-        "requested_topic_id_aliases": context.topic_candidates,
         "assignment_linked_topic_id": context.assignment_linked_topic_id,
         "resolved_topic_id": topic_view_id,
-        "resolved_topic_id_aliases": id_aliases(topic_view_id, course_id=course_id),
         "topic": {
             "id": topic_view_id,
             "title": title or "Untitled discussion",

@@ -5,7 +5,6 @@ from typing import Any
 from tools.common import (
     canvas_client,
     course_tab_target_url,
-    id_aliases,
     normalize,
 )
 
@@ -14,7 +13,6 @@ def map_course(course: dict[str, Any]) -> dict[str, Any]:
     course_id = str(course.get("id", ""))
     return {
         "id": course_id,
-        "id_aliases": id_aliases(course_id),
         "name": str(course.get("name", "Untitled course")),
         "course_code": str(course["course_code"])
         if course.get("course_code")
@@ -132,7 +130,6 @@ def get_course_overview(args: dict[str, Any]) -> dict[str, Any]:
     return {
         "course": {
             "id": course_id_value,
-            "id_aliases": id_aliases(course_id_value),
             "name": course.get("name", "Untitled course"),
             "course_code": course.get("course_code"),
             "workflow_state": course.get("workflow_state"),
@@ -202,7 +199,6 @@ def list_course_pages(args: dict[str, Any]) -> dict[str, Any]:
     items = [
         {
             "page_id": str(page.get("page_id", "")),
-            "id_aliases": id_aliases(str(page.get("page_id", ""))),
             "url": page.get("url"),
             "title": page.get("title", "Untitled page"),
             "created_at": page.get("created_at"),
