@@ -5,15 +5,12 @@ from typing import Any
 from tools.common import (
     assignment_to_discussion_topic,
     canvas_client,
-    clamp,
     count_discussion_entries,
     first_non_none,
     id_aliases,
-    invalid_argument,
     is_announcement_topic,
     looks_like_canvas_id,
     map_discussion_entry,
-    missing_argument,
     tool_error,
     truncate_html,
 )
@@ -23,12 +20,9 @@ from tools.resolvers import (
 )
 
 
-def _map_discussion_topic_item(
-    topic: dict[str, Any], *, course_id: str
-) -> dict[str, Any]:
+def _map_discussion_topic_item(topic: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": str(topic.get("id", "")),
-        "id_aliases": id_aliases(str(topic.get("id", "")), course_id=course_id),
         "title": topic.get("title", "Untitled discussion"),
         "message": truncate_html(topic.get("message")),
         "posted_at": topic.get("posted_at"),
@@ -43,11 +37,6 @@ def _map_discussion_topic_item(
         "assignment_id": str(topic["assignment_id"])
         if topic.get("assignment_id") is not None
         else None,
-        "assignment_id_aliases": id_aliases(
-            str(topic["assignment_id"]), course_id=course_id
-        )
-        if topic.get("assignment_id") is not None
-        else [],
         "points_possible": topic.get("points_possible"),
         "html_url": topic.get("html_url"),
         "source": topic.get("source", "discussion_topics_api"),
@@ -56,14 +45,10 @@ def _map_discussion_topic_item(
 
 def list_discussion_topics(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
-    if not course_id:
-        return missing_argument("course_id")
 
     search_in = str(args.get("search_in", "title")).strip().lower()
-    if search_in not in {"title", "title_or_message"}:
-        return invalid_argument("search_in must be 'title' or 'title_or_message'")
 
-    limit = clamp(args.get("limit"), 100)
+    limit = int(args.get("limit", 100))
     include_announcements = bool(args.get("include_announcements", False))
     only_graded = bool(args.get("only_graded", False))
     exact_title = bool(args.get("exact_title", False))
@@ -72,15 +57,7 @@ def list_discussion_topics(args: dict[str, Any]) -> dict[str, Any]:
     client = canvas_client()
 
     api_search = None if exact_title or looks_like_canvas_id(search_value) else search_value
-    api_topics = client.list_discussion_topics(
-        course_id=course_id,
-        search=api_search or None,
-        only_graded=False,
-        exact_title=False,
-        include_announcements=True,
-        search_in=search_in,
-        limit=scan_limit,
-    )
+    api_topics = client.list_discussion_topics(course_id=course_id, limit=scan_limit)
 
     assignment_topics: list[dict[str, Any]] = []
     needs_assignment_topics = only_graded or bool(search_value) or not api_topics
@@ -114,16 +91,13 @@ def list_discussion_topics(args: dict[str, Any]) -> dict[str, Any]:
 
     if search_value:
         query = search_value.casefold()
-        query_aliases = set(id_aliases(search_value, course_id=course_id))
+        query_aliases = set(id_aliases(search_value))
 
         def matches(topic: dict[str, Any]) -> bool:
-            topic_aliases = set(id_aliases(str(topic.get("id", "")), course_id=course_id))
+            topic_aliases = set(id_aliases(str(topic.get("id", ""))))
             assignment_value = topic.get("assignment_id")
             assignment_aliases = set(
-                id_aliases(
-                    str(assignment_value) if assignment_value is not None else "",
-                    course_id=course_id,
-                )
+                id_aliases(str(assignment_value) if assignment_value is not None else "")
             )
             if query_aliases and query_aliases & (topic_aliases | assignment_aliases):
                 return True
@@ -139,7 +113,7 @@ def list_discussion_topics(args: dict[str, Any]) -> dict[str, Any]:
         topics = [topic for topic in topics if matches(topic)]
 
     items = [
-        _map_discussion_topic_item(topic, course_id=course_id)
+        _map_discussion_topic_item(topic)
         for topic in topics[:limit]
     ]
     return {
@@ -159,14 +133,10 @@ def list_discussion_topics(args: dict[str, Any]) -> dict[str, Any]:
 def get_discussion_entries(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
     topic_id = str(args.get("topic_id", "")).strip()
-    if not course_id:
-        return missing_argument("course_id")
-    if not topic_id:
-        return missing_argument("topic_id")
 
     include_replies = bool(args.get("include_replies", True))
     include_participants = bool(args.get("include_participants", True))
-    limit = clamp(args.get("limit"), 200)
+    limit = int(args.get("limit", 200))
 
     context = resolve_discussion_topic_context(course_id, topic_id)
 
@@ -283,10 +253,8 @@ def get_discussion_entries(args: dict[str, Any]) -> dict[str, Any]:
     return {
         "course_id": course_id,
         "requested_topic_id": topic_id,
-        "requested_topic_id_aliases": context.topic_candidates,
         "assignment_linked_topic_id": context.assignment_linked_topic_id,
         "resolved_topic_id": topic_view_id,
-        "resolved_topic_id_aliases": id_aliases(topic_view_id, course_id=course_id),
         "topic": {
             "id": topic_view_id,
             "title": title or "Untitled discussion",

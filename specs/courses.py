@@ -1,17 +1,19 @@
 from __future__ import annotations
 
-from tools import (
-    canvas_get_page,
-    get_course_context_snapshot,
-    get_course_grade_summary,
+from tools.courses import (
     get_course_overview,
     get_course_syllabus,
     get_course_tab,
     list_course_pages,
     list_course_people,
     list_course_tabs,
-    list_modules,
-    resolve_canvas_url,
+)
+from tools.files import list_modules
+from tools.grades import get_course_grade_summary
+from tools.resolvers import resolve_canvas_url
+from tools.misc import (
+    canvas_get_page,
+    get_course_context_snapshot,
 )
 
 from specs.schema import ToolSpec, tool_spec

@@ -149,10 +149,28 @@ def _blank_cases():
 
 @pytest.mark.parametrize(("name", "required", "blank"), _blank_cases())
 def test_blank_required_argument_never_reaches_canvas(mock_client, name, required, blank):
-    # The schema accepts "" and [], so the tool's own check is what stops these.
+    # The schema accepts "" and [], so dispatch's blank check is what stops these.
     properties = registry._SPEC_MAP[name].parameters["properties"]
     args = {arg: _valid_value(properties[arg]) for arg in required}
     args[blank] = [] if properties[blank].get("type") == "array" else "  "
     result = registry.dispatch_tool_call(name, args)
-    assert result.get("error") in {"missing_argument", "invalid_argument"}, result
+    if "enum" in properties[blank]:  # "  " fails the enum before the blank check runs.
+        assert result.get("error") == "invalid_argument", result
+    else:
+        assert result == {"error": "missing_argument", "message": f"{blank} is required"}
     assert mock_client.mock_calls == []
+
+
+@pytest.mark.parametrize(
+    ("name", "args", "client_method"),
+    [
+        ("resolve_course", {"query": "x"}, "list_courses"),
+        ("list_discussion_topics", {"course_id": "1"}, "list_discussion_topics"),
+        ("list_course_assignments", {"course_id": "1"}, "list_assignments"),
+    ],
+)
+def test_integral_float_limit_is_accepted(mock_client, name, args, client_method):
+    # JSON Schema treats 1.0 as an integer, so handlers must still int() their limits.
+    getattr(mock_client, client_method).return_value = []
+    result = registry.dispatch_tool_call(name, {**args, "limit": 1.0})
+    assert "error" not in result, result

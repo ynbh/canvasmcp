@@ -8,13 +8,8 @@ from tools.common import (
     assignment_submission_download_path,
     canvas_api_tool_error,
     canvas_client,
-    clamp,
     download_dir,
-    expand_canvas_id,
-    id_aliases,
-    invalid_argument,
     is_forbidden_error,
-    missing_argument,
     short_canvas_id,
     tool_error,
 )
@@ -45,21 +40,15 @@ def _attachment_content_type(
 
 def list_course_submissions(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
-    if not course_id:
-        return missing_argument("course_id")
 
     include_raw = args.get("include")
     include: list[str] | None = None
     if include_raw is not None:
-        if not isinstance(include_raw, list):
-            return invalid_argument("include must be an array of strings")
         include = [str(item).strip() for item in include_raw if str(item).strip()]
 
     assignment_ids_raw = args.get("assignment_ids")
     assignment_ids: list[str] | None = None
     if assignment_ids_raw is not None:
-        if not isinstance(assignment_ids_raw, list):
-            return invalid_argument("assignment_ids must be an array of strings")
         assignment_ids = []
         for item in assignment_ids_raw:
             canvas_id = short_canvas_id(str(item))
@@ -67,7 +56,7 @@ def list_course_submissions(args: dict[str, Any]) -> dict[str, Any]:
                 assignment_ids.append(canvas_id)
 
     student_id = str(args.get("student_id", "self")).strip() or "self"
-    limit = clamp(args.get("limit"), 200)
+    limit = int(args.get("limit", 200))
     include_raw_submission = bool(args.get("include_raw_submission", False))
     try:
         submissions = canvas_client().list_submissions(
@@ -150,11 +139,6 @@ def list_course_submissions(args: dict[str, Any]) -> dict[str, Any]:
             "assignment_id": str(submission["assignment_id"])
             if submission.get("assignment_id") is not None
             else None,
-            "assignment_id_aliases": id_aliases(
-                str(submission["assignment_id"]), course_id=course_id
-            )
-            if submission.get("assignment_id") is not None
-            else [],
             "assignment_name": assignment.get("name")
             if isinstance(assignment, dict)
             else None,
@@ -212,13 +196,8 @@ def list_course_submissions(args: dict[str, Any]) -> dict[str, Any]:
 def install_assignment_submission_files(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
     assignment_id = str(args.get("assignment_id", "")).strip()
-    if not course_id:
-        return missing_argument("course_id")
-    if not assignment_id:
-        return missing_argument("assignment_id")
 
     api_assignment_id = short_canvas_id(assignment_id)
-    canonical_assignment_id = expand_canvas_id(api_assignment_id, course_id=course_id)
     force_refresh = bool(args.get("force_refresh", False))
     client = canvas_client()
 
@@ -236,12 +215,12 @@ def install_assignment_submission_files(args: dict[str, Any]) -> dict[str, Any]:
 
     root = download_dir()
     assignment_dir = assignment_submission_download_dir(
-        root, course_id, canonical_assignment_id
+        root, course_id, api_assignment_id
     )
 
     base_response: dict[str, Any] = {
         "course_id": course_id,
-        "assignment_id": canonical_assignment_id,
+        "assignment_id": api_assignment_id,
         "submission_id": None,
         "download_dir": str(assignment_dir),
         "count": 0,
@@ -306,7 +285,7 @@ def install_assignment_submission_files(args: dict[str, Any]) -> dict[str, Any]:
             target_path = assignment_submission_download_path(
                 root,
                 course_id,
-                canonical_assignment_id,
+                api_assignment_id,
                 submission_id,
                 file_id,
                 display_name,

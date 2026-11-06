@@ -4,15 +4,16 @@ from datetime import date
 from typing import Any
 
 from auth import CanvasAPIError
+from tools.assignments import list_course_assignments
 from tools.common import (
     canvas_client,
-    clamp,
-    missing_argument,
     parse_canvas_url_path,
     tool_error,
     truncate_html,
 )
-from tools.resolvers import resolve_canvas_url
+from tools.courses import get_course_overview, get_course_syllabus
+from tools.files import list_modules
+from tools.grades import get_course_grade_summary
 
 
 def get_today(_: dict[str, Any]) -> dict[str, Any]:
@@ -22,10 +23,6 @@ def get_today(_: dict[str, Any]) -> dict[str, Any]:
 def canvas_get_page(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
     url_or_id = str(args.get("url_or_id", "")).strip()
-    if not course_id:
-        return missing_argument("course_id")
-    if not url_or_id:
-        return missing_argument("url_or_id")
 
     if "://" in url_or_id:
         _, _, parts = parse_canvas_url_path(url_or_id)
@@ -81,10 +78,8 @@ def list_announcements(args: dict[str, Any]) -> dict[str, Any]:
     course_ids = [
         str(course_id).strip() for course_id in raw_course_ids if str(course_id).strip()
     ]
-    if not course_ids:
-        return missing_argument("course_ids")
 
-    limit = clamp(args.get("limit"), 100)
+    limit = int(args.get("limit", 100))
     announcements = canvas_client().list_announcements(
         course_ids=course_ids,
         start_date=str(args.get("start_date")) if args.get("start_date") else None,
@@ -111,7 +106,7 @@ def list_todo_items(args: dict[str, Any]) -> dict[str, Any]:
     course_ids = [
         str(course_id).strip() for course_id in raw_course_ids if str(course_id).strip()
     ]
-    limit = clamp(args.get("limit"), 100)
+    limit = int(args.get("limit", 100))
     todo_items = canvas_client().list_todo_items(
         course_ids=course_ids or None,
         limit=limit,
@@ -145,19 +140,12 @@ def _map_todo_assignment(assignment: dict[str, Any]) -> dict[str, Any]:
 
 def get_course_context_snapshot(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
-    if not course_id:
-        return missing_argument("course_id")
 
     include_syllabus_body = bool(args.get("include_syllabus_body", False))
-    upcoming_limit = clamp(args.get("upcoming_limit"), 20)
-    announcements_limit = clamp(args.get("announcements_limit"), 10)
-    modules_limit = clamp(args.get("modules_limit"), 20)
-    module_items_limit = clamp(args.get("module_items_limit"), 50)
-
-    from tools.assignments import list_course_assignments
-    from tools.courses import get_course_overview, get_course_syllabus
-    from tools.files import list_modules
-    from tools.grades import get_course_grade_summary
+    upcoming_limit = int(args.get("upcoming_limit", 20))
+    announcements_limit = int(args.get("announcements_limit", 10))
+    modules_limit = int(args.get("modules_limit", 20))
+    module_items_limit = int(args.get("module_items_limit", 50))
 
     snapshot: dict[str, Any] = {"course_id": course_id}
     errors: list[dict[str, str]] = []

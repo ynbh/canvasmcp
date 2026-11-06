@@ -169,6 +169,7 @@ dependencies = [
     { name = "canvasapi" },
     { name = "fastmcp" },
     { name = "jsonschema" },
+    { name = "requests" },
     { name = "rich" },
     { name = "typer" },
 ]
@@ -182,8 +183,9 @@ dev = [
 requires-dist = [
     { name = "browser-cookie3", specifier = ">=0.20.1" },
     { name = "canvasapi", specifier = ">=3.4.0" },
-    { name = "fastmcp", specifier = ">=2.12.2" },
+    { name = "fastmcp", specifier = ">=3.0" },
     { name = "jsonschema", specifier = ">=4.0" },
+    { name = "requests", specifier = ">=2.31" },
     { name = "rich", specifier = ">=13.7.0" },
     { name = "typer", specifier = ">=0.12.0" },
 ]

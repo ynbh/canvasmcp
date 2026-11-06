@@ -5,14 +5,11 @@ from typing import Any
 
 from auth import CanvasAPIError
 from tools.common import (
-    candidate_ids_for_lookup,
     canvas_client,
-    expand_canvas_id,
     extract_discussion_topic_id,
     id_aliases,
     is_forbidden_error,
     is_not_found_error,
-    missing_argument,
     parse_canvas_course_resource,
     parse_canvas_url_path,
     recommended_tool_for_resource,
@@ -72,17 +69,16 @@ def _try_discussion_topic(
 def _find_topic_in_list(
     topics: list[dict[str, Any]],
     *,
-    course_id: str,
     topic_candidates: list[str],
 ) -> dict[str, Any] | None:
     for topic in topics:
-        topic_aliases = id_aliases(str(topic.get("id", "")), course_id=course_id)
+        topic_aliases = id_aliases(str(topic.get("id", "")))
         assignment_id = (
             str(topic["assignment_id"])
             if topic.get("assignment_id") is not None
             else ""
         )
-        assignment_aliases = id_aliases(assignment_id, course_id=course_id)
+        assignment_aliases = id_aliases(assignment_id)
         if any(
             candidate in topic_aliases or candidate in assignment_aliases
             for candidate in topic_candidates
@@ -98,7 +94,7 @@ def resolve_discussion_topic_context(
     client: Any | None = None,
 ) -> DiscussionTopicContext:
     api_client = client or canvas_client()
-    topic_candidates = candidate_ids_for_lookup(topic_id, course_id=course_id)
+    topic_candidates = id_aliases(topic_id)
     request_ids = list(topic_candidates)
     resolved_topic: dict[str, Any] | None = None
     assignment_linked_topic_id: str | None = None
@@ -139,9 +135,7 @@ def resolve_discussion_topic_context(
         if not discussion_topic_id:
             continue
         assignment_linked_topic_id = discussion_topic_id
-        linked_ids = candidate_ids_for_lookup(
-            discussion_topic_id, course_id=course_id
-        )
+        linked_ids = id_aliases(discussion_topic_id)
         request_ids = _dedupe_ids([*linked_ids, *request_ids])
         if isinstance(assignment.get("discussion_topic"), dict):
             resolved_topic = assignment.get("discussion_topic")
@@ -158,7 +152,6 @@ def resolve_discussion_topic_context(
         try:
             listed_topics = api_client.list_discussion_topics(
                 course_id=course_id,
-                include_announcements=True,
                 limit=300,
             )
         except CanvasAPIError as exc:
@@ -167,15 +160,12 @@ def resolve_discussion_topic_context(
         else:
             resolved_topic = _find_topic_in_list(
                 listed_topics,
-                course_id=course_id,
                 topic_candidates=topic_candidates,
             )
             if resolved_topic and resolved_topic.get("id") is not None:
                 request_ids = _dedupe_ids(
                     [
-                        *candidate_ids_for_lookup(
-                            str(resolved_topic["id"]), course_id=course_id
-                        ),
+                        *id_aliases(str(resolved_topic["id"])),
                         *request_ids,
                     ]
                 )
@@ -192,9 +182,7 @@ def resolve_discussion_topic_context(
     if canonical_topic and canonical_topic.get("id") is not None:
         request_ids = _dedupe_ids(
             [
-                *candidate_ids_for_lookup(
-                    str(canonical_topic.get("id")), course_id=course_id
-                ),
+                *id_aliases(str(canonical_topic.get("id"))),
                 *request_ids,
             ]
         )
@@ -316,7 +304,7 @@ def resolve_canvas_resource_details(
             },
         }
     if resource_type == "file" and resource_id:
-        for candidate in candidate_ids_for_lookup(resource_id, course_id=course_id):
+        for candidate in id_aliases(resource_id):
             try:
                 file_info = canvas_client().get_file(
                     course_id=course_id,
@@ -342,14 +330,12 @@ def resolve_canvas_resource_details(
 
 def resolve_canvas_url(args: dict[str, Any]) -> dict[str, Any]:
     url = str(args.get("url", "")).strip()
-    if not url:
-        return missing_argument("url")
 
     parsed, path, parts = parse_canvas_url_path(url)
     course_id_raw, resource_type, resource_id_raw = parse_canvas_course_resource(parts)
     course_id = str(course_id_raw).strip() if course_id_raw else None
     resource_id = (
-        expand_canvas_id(resource_id_raw, course_id=course_id) if resource_id_raw else None
+        resource_id_raw.strip() if resource_id_raw else None
     )
     recommended_tool = recommended_tool_for_resource(resource_type)
 
@@ -373,11 +359,9 @@ def resolve_canvas_url(args: dict[str, Any]) -> dict[str, Any]:
         "path": path,
         "course_id_raw": course_id_raw,
         "course_id": course_id,
-        "course_id_aliases": id_aliases(course_id_raw or "", course_id=course_id),
         "resource_type": resource_type,
         "resource_id_raw": resource_id_raw,
         "resource_id": resource_id,
-        "resource_id_aliases": id_aliases(resource_id_raw or "", course_id=course_id),
         "recommended_tool": recommended_tool,
         "details": details,
         "detail_error": detail_error,

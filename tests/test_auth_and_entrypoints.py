@@ -299,7 +299,7 @@ class TestAuthPriority:
             {"CANVAS_BASE_URL": "https://umd.instructure.com"},
             clear=True,
         ):
-            from auth.resolve import resolve_canvas_base_url
+            from auth.session import resolve_canvas_base_url
 
             assert resolve_canvas_base_url() == "https://umd.instructure.com"
 
@@ -307,25 +307,25 @@ class TestAuthPriority:
         with (
             mock.patch.dict(os.environ, {}, clear=True),
             mock.patch(
-                "auth.resolve.detect_canvas_base_url",
+                "auth.session.detect_canvas_base_url",
                 return_value="https://umd.instructure.com",
             ),
         ):
-            from auth.resolve import resolve_canvas_base_url
+            from auth.session import resolve_canvas_base_url
 
             assert resolve_canvas_base_url() == "https://umd.instructure.com"
 
     def test_inference_error_mentions_chrome_before_env_override(self):
         with (
             mock.patch.dict(os.environ, {}, clear=True),
-            mock.patch("auth.resolve.detect_canvas_base_url", return_value=None),
+            mock.patch("auth.session.detect_canvas_base_url", return_value=None),
             mock.patch(
                 "auth.errors.list_canvas_cookie_domains",
                 return_value=["umd.instructure.com", "school.instructure.com"],
             ),
         ):
             from auth.errors import CanvasAPIError
-            from auth.resolve import resolve_canvas_base_url
+            from auth.session import resolve_canvas_base_url
 
             with pytest.raises(CanvasAPIError) as excinfo:
                 resolve_canvas_base_url()
@@ -378,12 +378,12 @@ class TestGeneratedCli:
 
     def test_courses_command_dispatches_expected_args(self):
         import cli
-        import cli.bootstrap as cli_boot
+        import cli.output as cli_mod
 
         runner = CliRunner()
         with (
-            mock.patch.object(cli_boot, "_ensure_auth"),
-            mock.patch.object(cli_boot, "dispatch_tool_call") as dispatch,
+            mock.patch.object(cli_mod, "_ensure_auth"),
+            mock.patch.object(cli_mod, "dispatch_tool_call") as dispatch,
         ):
             dispatch.return_value = {"count": 0, "courses": []}
             result = runner.invoke(cli.app, ["courses", "--all", "--limit", "10"])
@@ -395,12 +395,12 @@ class TestGeneratedCli:
 
     def test_assignment_submission_install_dispatches_expected_args(self):
         import cli
-        import cli.bootstrap as cli_boot
+        import cli.output as cli_mod
 
         runner = CliRunner()
         with (
-            mock.patch.object(cli_boot, "_ensure_auth"),
-            mock.patch.object(cli_boot, "dispatch_tool_call") as dispatch,
+            mock.patch.object(cli_mod, "_ensure_auth"),
+            mock.patch.object(cli_mod, "dispatch_tool_call") as dispatch,
         ):
             dispatch.return_value = {"count": 0, "files": []}
             result = runner.invoke(
@@ -426,12 +426,12 @@ class TestGeneratedCli:
 
     def test_today_does_not_require_auth(self):
         import cli
-        import cli.bootstrap as cli_boot
+        import cli.output as cli_mod
 
         runner = CliRunner()
         with (
-            mock.patch.object(cli_boot, "_ensure_auth") as ensure_auth,
-            mock.patch.object(cli_boot, "dispatch_tool_call") as dispatch,
+            mock.patch.object(cli_mod, "_ensure_auth") as ensure_auth,
+            mock.patch.object(cli_mod, "dispatch_tool_call") as dispatch,
         ):
             dispatch.return_value = {"today": "2026-03-10"}
             result = runner.invoke(cli.app, ["today"])
@@ -440,7 +440,7 @@ class TestGeneratedCli:
 
     def test_auth_status_reports_verified_session(self):
         import cli
-        import cli.bootstrap as cli_boot
+        import cli.misc as cli_mod
 
         status = {
             "auth_mode": "chrome-session",
@@ -448,7 +448,7 @@ class TestGeneratedCli:
             "auth_status": "verified",
             "auth_verified": True,
         }
-        with mock.patch.object(cli_boot, "get_auth_status", return_value=status):
+        with mock.patch.object(cli_mod, "get_auth_status", return_value=status):
             result = CliRunner().invoke(cli.app, ["--output", "json", "auth-status"])
         assert result.exit_code == 0
         assert json.loads(result.stdout) == status
@@ -467,11 +467,11 @@ class TestGeneratedCli:
 
     def test_auth_status_returns_json_error_instead_of_exiting(self):
         import cli
-        import cli.bootstrap as cli_boot
+        import cli.misc as cli_mod
 
         runner = CliRunner()
         with mock.patch.object(
-            cli_boot,
+            cli_mod,
             "get_auth_status",
             return_value={
                 "auth_mode": None,
@@ -486,12 +486,12 @@ class TestGeneratedCli:
 
     def test_auth_status_catches_canvas_api_error_and_returns_json(self):
         import cli
-        import cli.bootstrap as cli_boot
+        import cli.misc as cli_mod
         from auth import CanvasAPIError
 
         runner = CliRunner()
         with mock.patch.object(
-            cli_boot,
+            cli_mod,
             "get_auth_status",
             side_effect=CanvasAPIError("Could not infer a Canvas site from Chrome"),
         ):
@@ -503,7 +503,7 @@ class TestGeneratedCli:
 
     def test_settings_show_reports_saved_profile_and_auth(self):
         import cli
-        import cli.settings as settings_mod
+        import cli.misc as misc_mod
 
         runner = CliRunner()
         with (
@@ -512,7 +512,7 @@ class TestGeneratedCli:
                 return_value={"chrome_profile_name": "terpmail.umd.edu"},
             ),
             mock.patch.object(
-                settings_mod,
+                misc_mod,
                 "get_auth_status",
                 return_value={"auth_status": "verified"},
             ),
@@ -524,7 +524,7 @@ class TestGeneratedCli:
 
     def test_settings_show_catches_canvas_api_error_and_returns_json(self):
         import cli
-        import cli.settings as settings_mod
+        import cli.misc as misc_mod
         from auth import CanvasAPIError
 
         runner = CliRunner()
@@ -534,7 +534,7 @@ class TestGeneratedCli:
                 return_value={"chrome_profile_name": "terpmail.umd.edu"},
             ),
             mock.patch.object(
-                settings_mod,
+                misc_mod,
                 "get_auth_status",
                 side_effect=CanvasAPIError("Could not infer a Canvas site from Chrome"),
             ),
@@ -576,12 +576,12 @@ class TestGeneratedCli:
 
     def test_courses_command_renders_clean_auth_error(self):
         import cli
-        import cli.bootstrap as cli_boot
+        import cli.output as cli_mod
         from auth import CanvasAPIError
 
         runner = CliRunner()
         with mock.patch.object(
-            cli_boot,
+            cli_mod,
             "ensure_canvas_auth_configured",
             side_effect=CanvasAPIError("Open Canvas in Chrome and retry"),
         ):

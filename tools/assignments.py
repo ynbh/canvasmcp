@@ -5,10 +5,7 @@ from typing import Any
 from auth import CanvasAPIError
 from tools.common import (
     canvas_client,
-    clamp,
     extract_discussion_topic_id,
-    id_aliases,
-    missing_argument,
     short_canvas_id,
 )
 
@@ -16,7 +13,6 @@ from tools.common import (
 def _assignment_summary(
     assignment: dict[str, Any],
     *,
-    course_id: str,
     include_submission: bool = False,
     keep_submission_key: bool = False,
 ) -> dict[str, Any]:
@@ -24,7 +20,6 @@ def _assignment_summary(
     discussion_topic_id = extract_discussion_topic_id(assignment)
     summary = {
         "id": assignment_id,
-        "id_aliases": id_aliases(assignment_id, course_id=course_id),
         "name": assignment.get("name", "Untitled assignment"),
         "due_at": assignment.get("due_at"),
         "unlock_at": assignment.get("unlock_at"),
@@ -35,21 +30,14 @@ def _assignment_summary(
         "has_rubric": bool(assignment.get("rubric")),
         "use_rubric_for_grading": assignment.get("use_rubric_for_grading"),
         "discussion_topic_id": discussion_topic_id,
-        "discussion_topic_id_aliases": id_aliases(
-            str(discussion_topic_id or ""), course_id=course_id
-        ),
     }
     if include_submission or keep_submission_key:
         summary["submission"] = assignment.get("submission")
     return summary
 
 
-def _assignment_details(
-    assignment: dict[str, Any],
-    *,
-    course_id: str,
-) -> dict[str, Any]:
-    details = _assignment_summary(assignment, course_id=course_id)
+def _assignment_details(assignment: dict[str, Any]) -> dict[str, Any]:
+    details = _assignment_summary(assignment)
     details.update(
         {
             "description": assignment.get("description"),
@@ -70,11 +58,9 @@ def _assignment_details(
 
 def list_course_assignments(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
-    if not course_id:
-        return missing_argument("course_id")
 
     include_submission = bool(args.get("include_submission", False))
-    limit = clamp(args.get("limit"), 100)
+    limit = int(args.get("limit", 100))
     assignments = canvas_client().list_assignments(
         course_id=course_id,
         search=str(args.get("search")) if args.get("search") else None,
@@ -86,7 +72,6 @@ def list_course_assignments(args: dict[str, Any]) -> dict[str, Any]:
     items = [
         _assignment_summary(
             assignment,
-            course_id=course_id,
             include_submission=include_submission,
         )
         for assignment in assignments
@@ -97,10 +82,6 @@ def list_course_assignments(args: dict[str, Any]) -> dict[str, Any]:
 def get_assignment_details(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
     assignment_id = str(args.get("assignment_id", "")).strip()
-    if not course_id:
-        return missing_argument("course_id")
-    if not assignment_id:
-        return missing_argument("assignment_id")
 
     assignment = canvas_client().get_assignment(
         course_id=course_id,
@@ -111,7 +92,7 @@ def get_assignment_details(args: dict[str, Any]) -> dict[str, Any]:
 
     return {
         "course_id": course_id,
-        "assignment": _assignment_details(assignment, course_id=course_id),
+        "assignment": _assignment_details(assignment),
     }
 
 
@@ -147,10 +128,6 @@ def _peer_rubric_feedback(
 def get_assignment_rubric(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
     assignment_id = str(args.get("assignment_id", "")).strip()
-    if not course_id:
-        return missing_argument("course_id")
-    if not assignment_id:
-        return missing_argument("assignment_id")
 
     include_assessment = bool(args.get("include_assessment", False))
     include_peer_reviews = bool(args.get("include_peer_reviews", False))
@@ -192,7 +169,6 @@ def get_assignment_rubric(args: dict[str, Any]) -> dict[str, Any]:
     result = {
         "course_id": course_id,
         "assignment_id": assignment_id_value,
-        "assignment_id_aliases": id_aliases(assignment_id_value, course_id=course_id),
         "assignment_name": assignment.get("name", "Untitled assignment"),
         "points_possible": assignment.get("points_possible"),
         "html_url": assignment.get("html_url"),
@@ -227,12 +203,10 @@ def get_assignment_rubric(args: dict[str, Any]) -> dict[str, Any]:
 
 def list_assignment_groups(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
-    if not course_id:
-        return missing_argument("course_id")
 
     include_assignments = bool(args.get("include_assignments", False))
     include_submission = bool(args.get("include_submission", False))
-    limit = clamp(args.get("limit"), 100)
+    limit = int(args.get("limit", 100))
     groups = canvas_client().list_assignment_groups(
         course_id=course_id,
         include_assignments=include_assignments,
@@ -249,7 +223,6 @@ def list_assignment_groups(args: dict[str, Any]) -> dict[str, Any]:
                     continue
                 item = _assignment_summary(
                     assignment,
-                    course_id=course_id,
                     include_submission=include_submission,
                     keep_submission_key=True,
                 )

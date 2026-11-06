@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from specs.schema import ToolSpec, tool_spec
-from tools import get_inbox_conversation, list_inbox_conversations
-from tools.inbox import INBOX_SCOPES
+from tools.inbox import INBOX_SCOPES, get_inbox_conversation, list_inbox_conversations
 
 INBOX_TOOL_SPECS: list[ToolSpec] = [
     tool_spec(

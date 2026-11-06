@@ -32,7 +32,7 @@ class CanvasCoursesMixin:
                     include=["term", "favorites"],
                     per_page=MAX_PER_PAGE,
                 )
-            return self._paginate_list(raw, limit=limit)
+            return self._take_limit(raw, limit=limit)
 
         courses = self._call_canvas(_load, "list courses")
         if not search:
@@ -76,13 +76,13 @@ class CanvasCoursesMixin:
                 params["search_term"] = search
             if published_only is not None:
                 params["published"] = published_only
-            return self._paginate_list(course.get_pages(**params), limit=limit)
+            return self._take_limit(course.get_pages(**params), limit=limit)
 
         return self._call_canvas(_load, f"list pages for course {course_id}")
 
     def list_tabs(self, *, course_id: str, limit: int = 100) -> list[dict[str, Any]]:
         def _load(canvas: Canvas) -> list[dict[str, Any]]:
-            return self._paginate_list(canvas.get_course(course_id).get_tabs(), limit=limit)
+            return self._take_limit(canvas.get_course(course_id).get_tabs(), limit=limit)
 
         return self._call_canvas(_load, f"list tabs for course {course_id}")
 
@@ -120,7 +120,7 @@ class CanvasCoursesMixin:
             if search:
                 params["search_term"] = search
 
-            modules = self._paginate_list(
+            modules = self._take_limit(
                 course.get_modules(**params),
                 limit=limit,
             )
@@ -132,7 +132,7 @@ class CanvasCoursesMixin:
                     module_id = module.get("id")
                     if module_id is None:
                         continue
-                    module["items"] = self._paginate_list(
+                    module["items"] = self._take_limit(
                         course.get_module(module_id).get_module_items(
                             per_page=MAX_PER_PAGE
                         ),
@@ -192,6 +192,6 @@ class CanvasCoursesMixin:
                 endpoint=f"courses/{course_id}/users",
                 params=params,
             )
-            return self._paginate_list(users, limit=limit)
+            return self._take_limit(users, limit=limit)
 
         return self._call_canvas(_load, f"list users for course {course_id}")

@@ -14,6 +14,9 @@ import click
 import typer
 from rich.console import Console
 
+from auth import CanvasAPIError, ensure_canvas_auth_configured
+from specs.registry import dispatch_tool_call
+
 
 class OutputMode(str, Enum):
     auto = "auto"
@@ -49,9 +52,6 @@ FIELD_ORDER = {
     "auth": "auth_verified auth_status error selected_chrome_profile resolved_canvas_base_url auth_mode",
 }
 SECONDARY = {
-    "id_aliases",
-    "assignment_id_aliases",
-    "discussion_topic_id_aliases",
     "avatar_image_url",
     "items_url",
     "plist_label",
@@ -467,3 +467,19 @@ def emit(
 
 def fail(code: str, message: str, *, exit_code: int = 1, **details: Any) -> None:
     emit({"error": code, "message": message, **details}, exit_code=exit_code)
+
+
+def _ensure_auth() -> None:
+    try:
+        ensure_canvas_auth_configured()
+    except CanvasAPIError as exc:
+        fail("auth_error", str(exc))
+
+
+def invoke(tool_name: str, args: dict[str, Any] | None = None) -> None:
+    if tool_name != "get_today":
+        _ensure_auth()
+    try:
+        emit(dispatch_tool_call(tool_name, args or {}), tool_name=tool_name)
+    except CanvasAPIError as exc:
+        fail("canvas_api_error", str(exc))

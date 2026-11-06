@@ -58,7 +58,6 @@ def test_read_course_file_reports_oversize(mock_client, metadata, message):
 
 def _client_with_file(size, response):
     from client import CanvasClient
-    from client.base import CanvasClientBase
 
     file_info = mock.MagicMock(url="https://canvas.example.test/files/34/download?verifier=x")
     file_info.size = size
@@ -67,7 +66,7 @@ def _client_with_file(size, response):
     requester = mock.MagicMock(access_token="")
     requester._session.get.return_value.__enter__.return_value = response
     setattr(canvas, "_Canvas__requester", requester)
-    patch = mock.patch.object(CanvasClientBase, "_run_with_canvas", lambda self, call: call(canvas))
+    patch = mock.patch("client.base.Canvas", return_value=canvas)
     return CanvasClient(base_url="https://canvas.example.test"), requester, patch
 
 

@@ -43,3 +43,27 @@ def test_open_world_hint_is_not_closed():
 
 def test_every_write_tool_exists():
     assert WRITE_TOOLS <= {tool.name for tool in _tools()}
+
+
+def test_mcp_advertises_each_spec_schema_unchanged():
+    from specs.registry import TOOL_SPECS
+
+    advertised = {tool.name: tool.parameters for tool in _tools()}
+    for spec in TOOL_SPECS:
+        assert advertised[spec.name] == spec.parameters, spec.name
+
+
+def test_mcp_call_returns_dispatch_result_as_text_and_structured():
+    import json
+
+    from fastmcp import Client
+
+    async def call():
+        async with Client(mcp) as client:
+            return await client.call_tool(
+                "list_course_assignments", {"course_id": "1", "bucket": "x"}, raise_on_error=False
+            )
+
+    result = asyncio.run(call())
+    assert result.structured_content["error"] == "invalid_argument"
+    assert json.loads(result.content[0].text) == result.structured_content

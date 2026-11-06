@@ -1,82 +1,38 @@
 from __future__ import annotations
 
 import argparse
-from inspect import Parameter, Signature
+import asyncio
 from typing import Any
 
 from fastmcp import FastMCP
+from fastmcp.tools import Tool, ToolResult
 
 from auth import ensure_canvas_auth_configured
 from specs.registry import TOOL_SPECS, dispatch_tool_call
-from specs.schema import ToolSpec
 from tools.files import read_course_file
 
 mcp = FastMCP("canvas-mcp")
 
 
-def _annotation_from_schema(parameter_schema: dict[str, Any]) -> Any:
-    type_name = parameter_schema.get("type")
-    if type_name == "string":
-        return str
-    if type_name == "integer":
-        return int
-    if type_name == "boolean":
-        return bool
-    if type_name == "array":
-        item_schema = parameter_schema.get("items", {})
-        item_type = _annotation_from_schema(item_schema)
-        return list[item_type if item_type is not Any else Any]
-    return Any
+class _SpecTool(Tool):
+    """Advertises the spec's JSON schema as-is and runs the tool through dispatch."""
+
+    async def run(self, arguments: dict[str, Any]) -> ToolResult:
+        result = await asyncio.to_thread(dispatch_tool_call, self.name, arguments)
+        return ToolResult(content=result, structured_content=result)
 
 
-def _signature_for_spec(spec: ToolSpec) -> Signature:
-    properties = spec.parameters.get("properties", {})
-    required = set(spec.parameters.get("required", []))
-    parameters: list[Parameter] = []
-
-    for name, parameter_schema in properties.items():
-        annotation = _annotation_from_schema(parameter_schema)
-        default: Any = Parameter.empty
-        if name not in required:
-            annotation = annotation | None
-            default = None
-        parameters.append(
-            Parameter(
-                name=name,
-                kind=Parameter.POSITIONAL_OR_KEYWORD,
-                default=default,
-                annotation=annotation,
-            )
+for spec in TOOL_SPECS:
+    mcp.add_tool(
+        _SpecTool(
+            name=spec.name,
+            description=spec.description,
+            parameters=spec.parameters,
+            output_schema={"type": "object", "additionalProperties": True},
+            # openWorldHint stays at its default: every Canvas tool talks to a remote, multi-user system.
+            annotations={"readOnlyHint": spec.read_only, "destructiveHint": not spec.read_only},
         )
-
-    return Signature(parameters=parameters, return_annotation=dict[str, Any])
-
-
-def _tool_annotations(spec: ToolSpec) -> dict[str, bool]:
-    # openWorldHint stays at its default: every Canvas tool talks to a remote, multi-user system.
-    return {"readOnlyHint": spec.read_only, "destructiveHint": not spec.read_only}
-
-
-def _register_tool(spec: ToolSpec) -> None:
-    def _tool(**kwargs: Any) -> dict[str, Any]:
-        args = {key: value for key, value in kwargs.items() if value is not None}
-        return dispatch_tool_call(spec.name, args)
-
-    signature = _signature_for_spec(spec)
-    annotations = {
-        parameter.name: parameter.annotation
-        for parameter in signature.parameters.values()
-    }
-    annotations["return"] = dict[str, Any]
-    _tool.__name__ = spec.name
-    _tool.__doc__ = spec.description
-    _tool.__signature__ = signature
-    _tool.__annotations__ = annotations
-    mcp.tool(_tool, name=spec.name, description=spec.description, annotations=_tool_annotations(spec))
-
-
-for tool_spec in TOOL_SPECS:
-    _register_tool(tool_spec)
+    )
 
 
 mcp.tool(

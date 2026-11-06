@@ -80,17 +80,14 @@ class CanvasClientBase:
                 cookies=(session_cookie, csrf_token),
             )
 
-    def _run_with_canvas(self, call: Callable[[Canvas], Any]) -> Any:
-        canvas = Canvas(self._root_url, "")
-        self._inject_session_cookies(canvas)
-        try:
-            return call(canvas)
-        finally:
-            self._close_canvas(canvas)
-
     def _call_canvas(self, action: Callable[[Canvas], Any], context: str) -> Any:
         try:
-            return self._run_with_canvas(action)
+            canvas = Canvas(self._root_url, "")
+            try:
+                self._inject_session_cookies(canvas)
+                return action(canvas)
+            finally:
+                self._close_canvas(canvas)
         except (CanvasException, TypeError, ValueError) as exc:
             status_code = (
                 _status_code_for_canvas_exception(exc)
@@ -134,11 +131,6 @@ class CanvasClientBase:
             if len(out) >= safe_limit:
                 break
         return out
-
-    def _paginate_list(
-        self, items: Iterable[Any], *, limit: int = 100
-    ) -> list[dict[str, Any]]:
-        return self._take_limit(items, limit)
 
     @staticmethod
     def _custom_paginated_call(

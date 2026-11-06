@@ -5,10 +5,10 @@ import sys
 import typer
 
 import auth.settings as auth_settings
-from auth import CanvasAPIError, get_auth_status
 from auth.chrome_cookies import resolve_chrome_profile
-from auth.inspect import describe_chrome_profiles
+from auth.probe import describe_chrome_profiles
 from auth.settings import clear_settings, set_selected_profile
+from cli.misc import safe_auth_status
 from cli.output import OutputMode, emit, fail, output_mode
 
 settings_app = typer.Typer(help="Saved Chrome profile selection and auth state.")
@@ -20,18 +20,9 @@ def _render_selected_profile(saved: dict[str, str]) -> None:
 
 @settings_app.command("show")
 def settings_show() -> None:
-    try:
-        auth = get_auth_status()
-    except CanvasAPIError as exc:
-        auth = {
-            "auth_mode": None,
-            "auth_verified": False,
-            "auth_status": "error",
-            "error": str(exc),
-        }
     payload = {
         "settings": auth_settings.load_settings(),
-        "auth": auth,
+        "auth": safe_auth_status(),
     }
     emit(payload, tool_name="settings_show", failures=False)
 

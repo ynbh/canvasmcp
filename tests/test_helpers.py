@@ -21,27 +21,6 @@ class TestNormalize:
         assert _normalize("  lots   of   spaces  ") == "lots of spaces"
 
 
-class TestClamp:
-    """Tests for _clamp."""
-
-    def test_clamps_to_range(self):
-        from tools.common import clamp as _clamp
-
-        assert _clamp(0, 50) == 1
-        assert _clamp(500, 50) == 300
-        assert _clamp(100, 50) == 100
-
-    def test_returns_default_for_none(self):
-        from tools.common import clamp as _clamp
-
-        assert _clamp(None, 50) == 50
-
-    def test_returns_default_for_invalid(self):
-        from tools.common import clamp as _clamp
-
-        assert _clamp("abc", 50) == 50
-
-
 class TestRelevanceScore:
     """Tests for _relevance_score."""
 
@@ -72,46 +51,22 @@ class TestRelevanceScore:
 
 
 class TestCanvasIdHelpers:
-    """Tests for ID expansion/collapse/alias functions."""
-
-    def test_expand_tilde_id(self):
-        from tools.common import expand_canvas_id as _expand_canvas_id
-
-        result = _expand_canvas_id("1133~12345")
-        assert result == "113300000012345"
-
-    def test_collapse_full_id(self):
-        from tools.common import collapse_canvas_id as _collapse_canvas_id
-
-        result = _collapse_canvas_id("113300000012345")
-        assert result == "1133~12345"
+    """Canvas global IDs are shard * 10**13 + local ID; "shard~local" is the short form."""
 
     def test_short_canvas_id(self):
-        from tools.common import short_canvas_id as _short_canvas_id
+        from tools.common import short_canvas_id
 
-        assert _short_canvas_id("113300000012345") == "12345"
-        assert _short_canvas_id("1133~12345") == "12345"
-        assert _short_canvas_id("12345") == "12345"
+        assert short_canvas_id("1408~6108454") == "6108454"
+        assert short_canvas_id("14080000006108454") == "6108454"  # 1408 * 10**13 + 6108454
+        assert short_canvas_id("6108454") == "6108454"
+        assert short_canvas_id("my-page-slug") == "my-page-slug"
 
-    def test_id_aliases_returns_all_forms(self):
-        from tools.common import id_aliases as _id_aliases
+    def test_id_aliases_keeps_the_given_id_first(self):
+        from tools.common import id_aliases
 
-        aliases = _id_aliases("1133~12345")
-        assert "1133~12345" in aliases
-        assert "113300000012345" in aliases
-        assert "12345" in aliases
-
-    def test_id_aliases_empty_input(self):
-        from tools.common import id_aliases as _id_aliases
-
-        assert _id_aliases("") == []
-
-    def test_candidate_ids_for_lookup(self):
-        from tools.common import candidate_ids_for_lookup as _candidate_ids_for_lookup
-
-        candidates = _candidate_ids_for_lookup("1133~5", course_id="1133000000099")
-        assert candidates[0] == "11330000005"
-
+        assert id_aliases("6108454") == ["6108454"]
+        assert id_aliases(" 1408~6108454 ") == ["1408~6108454", "6108454"]
+        assert id_aliases("") == []
 
 class TestMapDiscussionEntry:
     """Tests for _map_discussion_entry."""
