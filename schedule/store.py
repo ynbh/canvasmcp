@@ -4,14 +4,31 @@ import json
 import os
 import re
 import secrets
+import threading
+import time
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
+
+from tools.common import short_canvas_id
+
+try:
+    import fcntl
+except ImportError:  # Windows: scheduling is launchd-only, so there is nothing to race.
+    fcntl = None  # type: ignore[assignment]
 
 PREVIEW_TTL = timedelta(minutes=15)
-JOB_STATUSES = frozenset(
-    {"pending", "submitted", "missed", "auth_failed", "failed", "cancelled"}
-)
+# Every job starts pending and leaves it exactly once; the other statuses are final.
+JOB_TRANSITIONS: dict[str, frozenset[str]] = {
+    "pending": frozenset({"submitted", "missed", "auth_failed", "failed", "cancelled"}),
+    "submitted": frozenset(),
+    "missed": frozenset(),
+    "auth_failed": frozenset(),
+    "failed": frozenset(),
+    "cancelled": frozenset(),
+}
+JOB_STATUSES = frozenset(JOB_TRANSITIONS)
 _TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 _SECRET_KEY_MARKERS = ("cookie", "csrf")
 _SECRET_KEYS = frozenset(
@@ -60,6 +77,7 @@ def schedule_root() -> Path:
         pass
     (root / "previews").mkdir(exist_ok=True)
     (root / "jobs").mkdir(exist_ok=True)
+    (root / "locks").mkdir(exist_ok=True)
     return root
 
 
@@ -123,6 +141,72 @@ def _job_path(job_id: str) -> Path:
     return schedule_root() / "jobs" / f"{_safe_id(job_id, kind='job id')}.json"
 
 
+def _job_lock_path(job_id: str) -> Path:
+    return schedule_root() / "locks" / f"{_safe_id(job_id, kind='job id')}.lock"
+
+
+class InvalidJobTransition(ValueError):
+    pass
+
+
+class JobLockTimeout(TimeoutError):
+    pass
+
+
+_held_job_locks = threading.local()
+
+
+@contextmanager
+def job_lock(job_id: str, *, timeout: float | None = None) -> Iterator[None]:
+    """Hold the job's lock across processes (launchd fire vs. CLI/MCP cancel).
+
+    Re-entrant within a thread. With a timeout, raises JobLockTimeout instead of
+    waiting forever on a fire that is stuck talking to Canvas.
+    """
+    held: dict[str, int] = getattr(_held_job_locks, "counts", None) or {}
+    _held_job_locks.counts = held
+    path = _job_lock_path(job_id)
+    if held.get(job_id):
+        held[job_id] += 1
+        try:
+            yield
+        finally:
+            held[job_id] -= 1
+        return
+
+    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        if fcntl is not None:
+            if timeout is None:
+                fcntl.flock(fd, fcntl.LOCK_EX)
+            else:
+                deadline = time.monotonic() + timeout
+                while True:
+                    try:
+                        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        break
+                    except BlockingIOError:
+                        if time.monotonic() >= deadline:
+                            raise JobLockTimeout(f"Scheduled job {job_id} is busy") from None
+                        time.sleep(0.1)
+        held[job_id] = 1
+        try:
+            yield
+        finally:
+            held.pop(job_id, None)
+    finally:
+        os.close(fd)  # closing the descriptor releases the flock
+
+
+def _check_transition(current: Any, target: Any) -> None:
+    if target not in JOB_STATUSES:
+        raise ValueError(f"Invalid job status: {target}")
+    if current == target:
+        return
+    if target not in JOB_TRANSITIONS.get(str(current), frozenset()):
+        raise InvalidJobTransition(f"Job cannot move from {current} to {target}")
+
+
 def save_preview(payload: dict[str, Any], *, token: str | None = None) -> dict[str, Any]:
     preview_token = token or secrets.token_urlsafe(32)
     _safe_id(preview_token, kind="preview token")
@@ -143,19 +227,21 @@ def load_preview(token: str) -> dict[str, Any] | None:
     record = _read_json(path)
     if record is None:
         return None
-    expires_at = record.get("expires_at")
-    if not expires_at:
-        path.unlink(missing_ok=True)
-        return None
-    try:
-        expiry = parse_submit_at(expires_at)
-    except ValueError:
-        path.unlink(missing_ok=True)
-        return None
-    if _now() >= expiry:
+    if not _preview_is_live(record):
         path.unlink(missing_ok=True)
         return None
     return record
+
+
+def _preview_is_live(record: dict[str, Any]) -> bool:
+    expires_at = record.get("expires_at")
+    if not expires_at:
+        return False
+    try:
+        expiry = parse_submit_at(expires_at)
+    except ValueError:
+        return False
+    return _now() < expiry
 
 
 def delete_preview(token: str) -> None:
@@ -166,11 +252,28 @@ def delete_preview(token: str) -> None:
 
 
 def consume_preview(token: str) -> dict[str, Any] | None:
-    record = load_preview(token)
-    if record is None:
+    """Claim a preview token exactly once, even with concurrent confirms."""
+    try:
+        path = _preview_path(token)
+    except ValueError:
         return None
-    delete_preview(token)
+    claimed = path.with_name(f"{path.stem}.{secrets.token_hex(8)}.claimed")
+    try:
+        # rename is atomic: of several callers racing on one token, only one wins.
+        os.rename(path, claimed)
+    except FileNotFoundError:
+        return None
+    try:
+        record = _read_json(claimed)
+    finally:
+        claimed.unlink(missing_ok=True)
+    if record is None or not _preview_is_live(record):
+        return None
     return record
+
+
+def new_job_id() -> str:
+    return secrets.token_urlsafe(16)
 
 
 def create_job(
@@ -188,7 +291,7 @@ def create_job(
     job_id: str | None = None,
     **extra: Any,
 ) -> dict[str, Any]:
-    resolved_id = job_id or secrets.token_urlsafe(16)
+    resolved_id = job_id or new_job_id()
     _safe_id(resolved_id, kind="job id")
     record = _strip_secrets(
         {
@@ -224,15 +327,22 @@ def get_job(job_id: str) -> dict[str, Any] | None:
 
 
 def update_job(job_id: str, **fields: Any) -> dict[str, Any]:
-    job = get_job(job_id)
-    if job is None:
-        raise KeyError(job_id)
-    status = fields.get("status", job.get("status"))
-    if status not in JOB_STATUSES:
-        raise ValueError(f"Invalid job status: {status}")
-    job.update(_strip_secrets(fields))
-    _write_json(_job_path(job_id), job)
-    return job
+    """Write fields onto a job. A status change must follow JOB_TRANSITIONS."""
+    with job_lock(job_id):
+        job = get_job(job_id)
+        if job is None:
+            raise KeyError(job_id)
+        if "status" in fields:
+            _check_transition(job.get("status"), fields["status"])
+        job.update(_strip_secrets(fields))
+        _write_json(_job_path(job_id), job)
+        return job
+
+
+def delete_job(job_id: str) -> None:
+    """Remove a job record. Only for jobs that were never armed."""
+    with job_lock(job_id):
+        _job_path(job_id).unlink(missing_ok=True)
 
 
 def list_jobs(*, status: str | None = None) -> list[dict[str, Any]]:
@@ -251,12 +361,9 @@ def list_jobs(*, status: str | None = None) -> list[dict[str, Any]]:
 def get_pending_job(
     course_id: str, assignment_id: str
 ) -> dict[str, Any] | None:
-    wanted_course = str(course_id)
-    wanted_assignment = str(assignment_id)
+    # "1408~123" and "123" name the same assignment.
+    wanted = (short_canvas_id(course_id), short_canvas_id(assignment_id))
     for job in list_jobs(status="pending"):
-        if (
-            str(job.get("course_id")) == wanted_course
-            and str(job.get("assignment_id")) == wanted_assignment
-        ):
+        if (short_canvas_id(job.get("course_id", "")), short_canvas_id(job.get("assignment_id", ""))) == wanted:
             return job
     return None
