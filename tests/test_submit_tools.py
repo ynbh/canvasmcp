@@ -107,6 +107,7 @@ def submit_mocks(pdf_path: Path):
 
     with (
         mock.patch("tools.submit.canvas_client", return_value=client),
+        mock.patch("schedule.fire.canvas_client", return_value=client),
         mock.patch("tools.submit.get_auth_status", return_value=_auth_ok()),
         mock.patch("tools.submit.save_preview") as save_preview,
         mock.patch("tools.submit.load_preview") as load_preview,
@@ -624,7 +625,10 @@ class TestConfirmAssignmentSubmission:
                 raise RuntimeError("no client")
             return real_client
 
-        with mock.patch("tools.submit.canvas_client", side_effect=flaky_client):
+        with (
+            mock.patch("tools.submit.canvas_client", side_effect=flaky_client),
+            mock.patch("schedule.fire.canvas_client", side_effect=flaky_client),
+        ):
             result = confirm_assignment_submission({"preview_token": "tok123"})
         assert "boom" in result["message"]
         assert result["file_cleanup"] == [{"file_id": "99", "error": "no client"}]

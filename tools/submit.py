@@ -9,11 +9,15 @@ from typing import Any
 
 from auth import CanvasAPIError, get_auth_status
 from schedule.caffeinate import start_caffeinate, stop_caffeinate
-from schedule.fire import CANCEL_LOCK_TIMEOUT_SECONDS, cancel_job, delete_uploaded_files
+from schedule.fire import (
+    CANCEL_LOCK_TIMEOUT_SECONDS,
+    cancel_job,
+    delete_uploaded_files,
+    submission_payload,
+)
 from schedule.launchd import bootout_job, install_job
 from schedule.notify import notify
 from schedule.store import (
-    JOB_STATUSES,
     JobLockTimeout,
     consume_preview,
     create_job,
@@ -34,7 +38,6 @@ from tools.common import (
     tool_error,
 )
 
-SUBMISSION_TYPES = frozenset({"online_upload", "online_text_entry"})
 BODY_PREVIEW_LIMIT = 240
 _OFFSET_RE = re.compile(r"(Z|z|[+-]\d{2}:?\d{2})$")
 
@@ -192,13 +195,8 @@ def _planned_payload(
 def _clock_args(args: dict[str, Any]) -> tuple[bool, str | None, int | None]:
     now = bool(args.get("now", False))
     submit_at = str(args.get("submit_at", "")).strip() or None
-    minutes_raw = args.get("minutes_before_due")
-    minutes: int | None
-    if minutes_raw is None or minutes_raw == "":
-        minutes = None
-    else:
-        minutes = int(minutes_raw)
-    return now, submit_at, minutes
+    minutes = args.get("minutes_before_due")
+    return now, submit_at, None if minutes is None else int(minutes)
 
 
 def _validate_clock_choice(
@@ -213,8 +211,6 @@ def _validate_clock_choice(
         return invalid_argument(
             "now, submit_at, and minutes_before_due are mutually exclusive"
         )
-    if minutes_before_due is not None and minutes_before_due < 0:
-        return invalid_argument("minutes_before_due must be >= 0")
     if submit_at is not None and not _has_offset(submit_at):
         return invalid_argument("submit_at must be ISO-8601 with a timezone offset")
     return None
@@ -320,19 +316,9 @@ def _load_assignment(course_id: str, assignment_id: str) -> dict[str, Any]:
     )
 
 
-def _delete_uploaded_files(file_ids: list[Any]) -> list[dict[str, Any]]:
-    if not file_ids:
-        return []
-    try:
-        client = canvas_client()
-    except Exception as exc:  # never mask the error that made us clean up
-        return [{"file_id": str(file_id), "error": str(exc)} for file_id in file_ids]
-    return delete_uploaded_files(file_ids, client)
-
-
 def _abort(error: dict[str, Any], file_ids: list[str]) -> dict[str, Any]:
     """Return an error after deleting files this confirm uploaded but won't use."""
-    return {**error, "file_cleanup": _delete_uploaded_files(file_ids)}
+    return {**error, "file_cleanup": delete_uploaded_files(file_ids)}
 
 
 def _upload_files(
@@ -362,44 +348,19 @@ def _upload_files(
         )
 
 
-def _submission_payload(
-    submission_type: str, *, file_ids: list[str], body: str | None
-) -> dict[str, Any]:
-    if submission_type == "online_upload":
-        return {"submission_type": "online_upload", "file_ids": file_ids}
-    return {"submission_type": "online_text_entry", "body": body or ""}
-
-
 def preview_assignment_submission(args: dict[str, Any]) -> dict[str, Any]:
     course_id = str(args.get("course_id", "")).strip()
     assignment_id = str(args.get("assignment_id", "")).strip()
     submission_type = str(args.get("submission_type", "")).strip()
-    if not course_id:
-        return missing_argument("course_id")
-    if not assignment_id:
-        return missing_argument("assignment_id")
-    if not submission_type:
-        return missing_argument("submission_type")
-    if submission_type not in SUBMISSION_TYPES:
-        return invalid_argument(
-            "submission_type must be online_upload or online_text_entry"
-        )
 
-    try:
-        now, submit_at_raw, minutes_before_due = _clock_args(args)
-    except (TypeError, ValueError):
-        return invalid_argument("minutes_before_due must be an integer >= 0")
+    now, submit_at_raw, minutes_before_due = _clock_args(args)
     clock_error = _validate_clock_choice(now, submit_at_raw, minutes_before_due)
     if clock_error is not None:
         return clock_error
 
-    file_paths_raw = args.get("file_paths")
-    if file_paths_raw is None:
-        file_paths: list[str] = []
-    elif not isinstance(file_paths_raw, list):
-        return invalid_argument("file_paths must be an array of strings")
-    else:
-        file_paths = [str(item).strip() for item in file_paths_raw if str(item).strip()]
+    file_paths = [
+        str(item).strip() for item in args.get("file_paths") or [] if str(item).strip()
+    ]
 
     body = args.get("body")
     if body is not None:
@@ -488,8 +449,6 @@ def preview_assignment_submission(args: dict[str, Any]) -> dict[str, Any]:
 
 def confirm_assignment_submission(args: dict[str, Any]) -> dict[str, Any]:
     token = str(args.get("preview_token", "")).strip()
-    if not token:
-        return missing_argument("preview_token")
     override = bool(args.get("override", False))
     caffeinate = bool(args.get("caffeinate", False))
 
@@ -627,7 +586,7 @@ def _submit_or_schedule(
         except CanvasAPIError as exc:
             return _abort(canvas_api_tool_error(exc), file_ids)
         except Exception:
-            _delete_uploaded_files(file_ids)
+            delete_uploaded_files(file_ids)
             raise
 
     if now:
@@ -645,8 +604,8 @@ def _submit_or_schedule(
             submission = canvas_client().submit_assignment(
                 course_id=course_id,
                 assignment_id=assignment_id,
-                submission=_submission_payload(
-                    submission_type, file_ids=file_ids, body=body
+                submission=submission_payload(
+                    {"submission_type": submission_type, "file_ids": file_ids, "body": body}
                 ),
             )
         except CanvasAPIError as exc:
@@ -716,20 +675,12 @@ def _submit_or_schedule(
 
 
 def list_scheduled_submissions(args: dict[str, Any]) -> dict[str, Any]:
-    status = args.get("status")
-    if status is not None:
-        status = str(status).strip() or None
-        if status is not None and status not in JOB_STATUSES:
-            allowed = ", ".join(sorted(JOB_STATUSES))
-            return invalid_argument(f"status must be one of: {allowed}")
-    jobs = list_jobs(status=status)
+    jobs = list_jobs(status=args.get("status"))
     return {"ok": True, "count": len(jobs), "jobs": jobs}
 
 
 def get_scheduled_submission(args: dict[str, Any]) -> dict[str, Any]:
     job_id = str(args.get("job_id", "")).strip()
-    if not job_id:
-        return missing_argument("job_id")
     job = get_job(job_id)
     if job is None:
         return tool_error("not_found", f"No scheduled job {job_id}")
@@ -738,8 +689,6 @@ def get_scheduled_submission(args: dict[str, Any]) -> dict[str, Any]:
 
 def cancel_scheduled_submission(args: dict[str, Any]) -> dict[str, Any]:
     job_id = str(args.get("job_id", "")).strip()
-    if not job_id:
-        return missing_argument("job_id")
     job = get_job(job_id)
     if job is None:
         return tool_error("not_found", f"No scheduled job {job_id}")

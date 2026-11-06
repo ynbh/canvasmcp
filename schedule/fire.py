@@ -8,12 +8,7 @@ from schedule.caffeinate import stop_caffeinate
 from schedule.launchd import bootout_job
 from schedule.notify import notify
 from schedule.store import get_job, job_lock, parse_submit_at, update_job
-
-
-def canvas_client():
-    from tools.common import canvas_client as _canvas_client
-
-    return _canvas_client()
+from tools.common import canvas_client
 
 
 MISSED_SKEW = timedelta(seconds=60)
@@ -23,7 +18,7 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _submission_payload(job: dict[str, Any]) -> dict[str, Any]:
+def submission_payload(job: dict[str, Any]) -> dict[str, Any]:
     kind = job.get("submission_type")
     if kind == "online_upload":
         return {
@@ -60,12 +55,12 @@ _DELETE_FILES_ON = frozenset({"missed", "auth_failed", "cancelled"})
 CANCEL_LOCK_TIMEOUT_SECONDS = 30.0
 
 
-def delete_uploaded_files(file_ids: list[Any], client: Any = None) -> list[dict[str, Any]]:
+def delete_uploaded_files(file_ids: list[Any]) -> list[dict[str, Any]]:
     """Best-effort delete of files uploaded for a submission that will not happen."""
     if not file_ids:
         return []
     try:
-        client = client or canvas_client()
+        client = canvas_client()
     except Exception as exc:
         return [{"file_id": str(file_id), "error": str(exc)} for file_id in file_ids]
     notes: list[dict[str, Any]] = []
@@ -139,7 +134,7 @@ def fire_job(job_id: str) -> dict[str, Any]:
             result = client.submit_assignment(
                 course_id=job["course_id"],
                 assignment_id=job["assignment_id"],
-                submission=_submission_payload(job),
+                submission=submission_payload(job),
             )
         except Exception as exc:
             return _finish(job_id, "failed", fired_at=fired_at, error=str(exc))
