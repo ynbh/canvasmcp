@@ -19,7 +19,7 @@ class _SpecTool(Tool):
 
     async def run(self, arguments: dict[str, Any]) -> ToolResult:
         result = await asyncio.to_thread(dispatch_tool_call, self.name, arguments)
-        return self.convert_result(result)
+        return ToolResult(content=result, structured_content=result)
 
 
 for spec in TOOL_SPECS:
