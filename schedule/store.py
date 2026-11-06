@@ -11,6 +11,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
+from tools.common import short_canvas_id
+
 try:
     import fcntl
 except ImportError:  # Windows: scheduling is launchd-only, so there is nothing to race.
@@ -359,12 +361,9 @@ def list_jobs(*, status: str | None = None) -> list[dict[str, Any]]:
 def get_pending_job(
     course_id: str, assignment_id: str
 ) -> dict[str, Any] | None:
-    wanted_course = str(course_id)
-    wanted_assignment = str(assignment_id)
+    # "1408~123" and "123" name the same assignment.
+    wanted = (short_canvas_id(course_id), short_canvas_id(assignment_id))
     for job in list_jobs(status="pending"):
-        if (
-            str(job.get("course_id")) == wanted_course
-            and str(job.get("assignment_id")) == wanted_assignment
-        ):
+        if (short_canvas_id(job.get("course_id", "")), short_canvas_id(job.get("assignment_id", ""))) == wanted:
             return job
     return None

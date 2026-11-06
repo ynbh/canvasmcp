@@ -183,6 +183,11 @@ class TestPendingByAssignment:
         assert found is not None
         assert found["id"] == first["id"]
 
+    def test_matches_short_and_local_id_forms(self, schedule_env):
+        job = _pending_job()  # stored as "1133~1" / "1133~99"
+        found = get_pending_job("1", "99")
+        assert found is not None and found["id"] == job["id"]
+
     def test_ignores_non_pending_jobs(self, schedule_env):
         job = _pending_job()
         update_job(job["id"], status="submitted")
