@@ -39,7 +39,9 @@ See the [README](../README.md) for install, auth, and the usual flow. `canvas --
 | `canvas todo` | `list_todo_items` |
 | `canvas inbox list` | `list_inbox_conversations` |
 | `canvas inbox show CONVERSATION` | `get_inbox_conversation` |
+| `canvas quizzes list ID` | `list_course_quizzes` |
+| `canvas quizzes results COURSE QUIZ [--attempt N]` | `get_quiz_results` |
 | `canvas course people ID` | `list_course_people` |
 | `canvas url URL` | `resolve_canvas_url` |
 
-Inbox commands are read-only and never mark a conversation as read. `canvas_get_page` is wiki pages only. Use `canvas url` when the link type is unknown. Non-self submission queries need extra Canvas permissions.
+Inbox commands are read-only and never mark a conversation as read. Quiz commands are read-only too: they never open, start, or resume an attempt, and `results` only reads finished attempts. `canvas_get_page` is wiki pages only. Use `canvas url` when the link type is unknown. Non-self submission queries need extra Canvas permissions.

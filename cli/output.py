@@ -43,6 +43,8 @@ FIELD_ORDER = {
     "entries": "id user_id created_at message replies",
     "conversations": "id subject workflow_state last_message_at context_name participants last_message_preview",
     "messages": "id created_at author body attachments",
+    "quizzes": "kind quiz_id title type due_at time_limit_minutes allowed_attempts your_status",
+    "questions": "position type question your_answer result points correct_answers",
     "submissions": "id assignment_id assignment_name workflow_state attempt score grade submitted_at missing late excused",
     "modules": "id name state unlock_at items_count items",
     "assignment_groups": "id name group_weight rules assignments",

@@ -1,6 +1,6 @@
 ---
 name: canvas-cli
-description: Use the local `canvas` CLI for Canvas LMS workflows. Trigger when you need to find a course, inspect modules/assignments/discussions/files/pages/people/grades/rubrics/inbox messages, submit or schedule an assignment, or verify Canvas session status from the terminal.
+description: Use the local `canvas` CLI for Canvas LMS workflows. Trigger when you need to find a course, inspect modules/assignments/discussions/files/pages/people/grades/rubrics/inbox messages/quizzes, submit or schedule an assignment, or verify Canvas session status from the terminal.
 ---
 
 # Canvas CLI Agent Instructions
@@ -174,6 +174,20 @@ Best practice:
 - Use `student-id self` for the current user.
 - Non-self submission queries may fail because of Canvas permissions; report permission limits clearly.
 - For feedback questions, inspect submissions for `submission_comments`, `rubric_assessment`, `attachments`, `score`, `grade`, `late`, and `missing`.
+
+## Quizzes
+
+```bash
+canvas quizzes list <course_id>
+canvas quizzes results <course_id> <quiz_id>
+canvas quizzes results <course_id> <quiz_id> --attempt 2
+```
+
+Best practice:
+
+- Both commands are read-only and never open, start, or resume an attempt. Starting a quiz starts its timer, so never try to open or take one.
+- `quizzes list` shows each quiz's time limit, attempts allowed and left, unlock, due, and lock dates, lockdown or access-code requirements, your score, and the instructions. New Quizzes show dates, points, and score only.
+- `quizzes results` reads one finished attempt (the latest by default): each question, your answer, whether it was right, the points, and the correct answer when the quiz shows it. It reads nothing while an attempt is in progress.
 
 ## Course Structure
 
