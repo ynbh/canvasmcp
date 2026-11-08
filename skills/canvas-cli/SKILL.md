@@ -1,6 +1,6 @@
 ---
 name: canvas-cli
-description: Use the local `canvas` CLI for Canvas LMS workflows. Trigger when you need to find a course, inspect modules/assignments/discussions/files/pages/people/grades/rubrics/inbox messages, submit or schedule an assignment, or verify Canvas session status from the terminal.
+description: Use the local `canvas` CLI for Canvas LMS workflows. Trigger when you need to find a course, inspect modules/assignments/discussions/files/pages/people/grades/rubrics/inbox messages, manage the To Do list, submit or schedule an assignment, or verify Canvas session status from the terminal.
 ---
 
 # Canvas CLI Agent Instructions
@@ -211,6 +211,24 @@ Best practice:
 
 - Use todo for the user's current Canvas To Do list and cross-course upcoming work.
 - Use assignment APIs for full assignment details; todo entries are summaries.
+
+## Planner
+
+```bash
+canvas planner items --start 2026-10-01 --end 2026-10-31 --incomplete
+canvas planner add "Read chapter 3" --date 2026-10-12 --course <course_id>
+canvas planner edit <note_id> --date 2026-10-14
+canvas planner delete <note_id>
+canvas planner done assignment <assignment_id>
+canvas planner done assignment <assignment_id> --undo
+```
+
+Best practice:
+
+- `planner items` lists the To Do list between two dates with each item's `plannable_type`, `plannable_id`, and done or dismissed state. Use it instead of `todo` when you need those or the user's own notes.
+- `planner add`, `edit`, and `delete` manage personal to-do notes, which only the user can see.
+- `planner done` marks any item done or not done, like the Canvas checkbox. It never submits anything.
+- These change Canvas, so confirm with the user before running them.
 
 ## Inbox
 
