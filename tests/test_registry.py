@@ -104,6 +104,9 @@ REQUIRED_ARGUMENTS = {
     "list_todo_items": [],
     "list_inbox_conversations": [],
     "get_inbox_conversation": ["conversation_id"],
+    "list_course_quizzes": ["course_id"],
+    "get_quiz_results": ["course_id", "quiz_id"],
+    "get_new_quiz_results": ["assignment_id", "course_id"],
 }
 
 

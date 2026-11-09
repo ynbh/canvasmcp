@@ -39,7 +39,10 @@ See the [README](../README.md) for install, auth, and the usual flow. `canvas --
 | `canvas todo` | `list_todo_items` |
 | `canvas inbox list` | `list_inbox_conversations` |
 | `canvas inbox show CONVERSATION` | `get_inbox_conversation` |
+| `canvas quizzes list ID` | `list_course_quizzes` |
+| `canvas quizzes results COURSE QUIZ [--attempt N]` | `get_quiz_results` |
+| `canvas quizzes new-results COURSE ASSIGNMENT [--attempt N]` | `get_new_quiz_results` |
 | `canvas course people ID` | `list_course_people` |
 | `canvas url URL` | `resolve_canvas_url` |
 
-Inbox commands are read-only and never mark a conversation as read. `canvas_get_page` is wiki pages only. Use `canvas url` when the link type is unknown. Non-self submission queries need extra Canvas permissions.
+Inbox commands are read-only and never mark a conversation as read. Quiz commands are read-only too: they never start or resume an attempt, and `results` and `new-results` only read finished attempts. `new-results` opens a New Quiz the way its Canvas page does, and only after Canvas shows a submitted attempt. `canvas_get_page` is wiki pages only. Use `canvas url` when the link type is unknown. Non-self submission queries need extra Canvas permissions.
