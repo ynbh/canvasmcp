@@ -29,3 +29,17 @@ def quizzes_results(
         "get_quiz_results",
         {"course_id": course_id, "quiz_id": quiz_id, "attempt": attempt},
     )
+
+
+@quizzes_app.command("new-results")
+def quizzes_new_results(
+    course_id: Annotated[str, typer.Argument(help="Course ID.")],
+    assignment_id: Annotated[str, typer.Argument(help="The New Quiz's assignment ID.")],
+    attempt: Annotated[
+        int | None, typer.Option(help="Attempt number; defaults to the latest.")
+    ] = None,
+) -> None:
+    invoke(
+        "get_new_quiz_results",
+        {"course_id": course_id, "assignment_id": assignment_id, "attempt": attempt},
+    )

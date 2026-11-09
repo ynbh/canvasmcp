@@ -322,6 +322,10 @@ def test_canvas_errors_become_tool_errors(mock_client):
         (["quizzes", "results", "5", "10"], "get_quiz_results", {"course_id": "5", "quiz_id": "10", "attempt": None}),
         (["quizzes", "results", "5", "10", "--attempt", "2"], "get_quiz_results",
          {"course_id": "5", "quiz_id": "10", "attempt": 2}),
+        (["quizzes", "new-results", "5", "7"], "get_new_quiz_results",
+         {"course_id": "5", "assignment_id": "7", "attempt": None}),
+        (["quizzes", "new-results", "5", "7", "--attempt", "1"], "get_new_quiz_results",
+         {"course_id": "5", "assignment_id": "7", "attempt": 1}),
     ],
 )
 def test_cli_quiz_commands(monkeypatch, argv, tool, args):

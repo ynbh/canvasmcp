@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import json
+from datetime import datetime, timezone
 from html.parser import HTMLParser
 from typing import Any
 
 from auth import CanvasAPIError
+from client.quizzes import NewQuizReader
 from tools.common import canvas_client, invalid_argument, looks_like_canvas_id, truncate_html
 
 # Reading quizzes is safe; taking one is not. Nothing here starts, resumes, or submits an attempt (see
@@ -150,8 +153,8 @@ def list_course_quizzes(args: dict[str, Any]) -> dict[str, Any]:
     new = [_new_quiz_summary(a) for a in assignments if a.get("is_quiz_lti_assignment")]
     if new:
         notes.append(
-            "New Quizzes show dates, points, and your score. Their time and attempt limits, questions, "
-            "and answers live inside the New Quizzes app, which students can't read through the API."
+            "New Quizzes show dates, points, and your score here. For a New Quiz's questions and your answers, "
+            "use get_new_quiz_results with its assignment_id."
         )
     items += new[: max(limit - len(items), 0)]
     return {"course_id": course_id, "count": len(items), "quizzes": items, "notes": notes}
@@ -374,4 +377,254 @@ def get_quiz_results(args: dict[str, Any]) -> dict[str, Any]:
             "questions": items,
         }
     )
+    return result
+
+
+# -- New Quizzes ---------------------------------------------------------------------------------------
+# Canvas's submission states that mean at least one attempt was handed in. Nothing is opened before Canvas says so.
+CANVAS_SUBMITTED = ("submitted", "graded", "pending_review")
+# New Quizzes' states for a finished attempt; anything else (pending, started, in progress) is never read.
+NEW_QUIZ_FINISHED = ("submitted", "graded", "needs_review", "pending_review", "complete", "completed")
+NEW_QUIZ_NOTE = (
+    "Read-only: this opens the quiz the same way its Canvas page does, which never starts an attempt, and only "
+    "finished attempts are read."
+)
+SINGLE_CHOICE = ("choice", "true-false")
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _iso(value: Any) -> datetime | None:
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")) if value else None
+    except ValueError:
+        return None
+
+
+def _in_window(show_at: Any, hide_at: Any) -> bool:
+    show, hide, now = _iso(show_at), _iso(hide_at), _now()
+    return (show is None or show <= now) and (hide is None or now < hide)
+
+
+def _visibility(participant_session: dict[str, Any]) -> dict[str, bool]:
+    """What New Quizzes lets you see of one attempt.
+
+    Whether the questions show at all is New Quizzes' own decision (can_see_results_items). Within them, a setting
+    the instructor turned off stays off; a setting that isn't listed is only shown when results aren't restricted.
+    """
+    vp = participant_session.get("view_permissions") or {}
+    restricted = bool(vp.get("result_view_restricted"))
+    last_done = not vp.get("attempts_remain")
+
+    def allowed(flag: str) -> bool:
+        return bool(vp[flag]) if flag in vp else not restricted
+
+    def qualified(qualifier: str) -> bool:
+        return "after_last_attempt" not in str(vp.get(qualifier) or "always") or last_done
+
+    items = (
+        bool(participant_session.get("can_see_results_page"))
+        and bool(participant_session.get("can_see_results_items"))
+        and allowed("display_items")
+    )
+    responses = (
+        items
+        and allowed("display_item_response")
+        and qualified("display_item_response_qualifier")
+        and _in_window(vp.get("show_item_responses_at"), vp.get("hide_item_responses_at"))
+    )
+    correctness = (
+        responses
+        and allowed("display_item_response_correctness")
+        and qualified("display_item_response_correctness_qualifier")
+        and _in_window(vp.get("show_item_response_correctness_at"), vp.get("hide_item_response_correctness_at"))
+    )
+    return {
+        "questions": items,
+        "your_answers": responses,
+        "points": allowed("display_points_awarded"),
+        "correctness": correctness,
+        "correct_answers": correctness and allowed("display_item_correct_answer"),
+        "feedback": responses and allowed("display_item_feedback"),
+    }
+
+
+def _nq_choices(slug: str, data: dict[str, Any]) -> dict[str, Any] | None:
+    if slug == "true-false":
+        return {"true": data.get("true_choice") or "True", "false": data.get("false_choice") or "False"}
+    choices = data.get("choices")
+    if isinstance(choices, list):
+        ordered = sorted((c for c in choices if isinstance(c, dict)), key=lambda c: c.get("position") or 0)
+        return {str(c.get("id")): truncate_html(c.get("item_body"), limit=500) for c in ordered}
+    return None
+
+
+def _raw(value: Any) -> Any:
+    if value in (None, "", [], {}):
+        return None
+    if isinstance(value, str):
+        return truncate_html(value, limit=QUESTION_CHAR_LIMIT)
+    if isinstance(value, (int, float, bool)):
+        return value
+    return json.dumps(value)[:QUESTION_CHAR_LIMIT]
+
+
+def _feedback(result: dict[str, Any], picked: list[str]) -> list[str] | None:
+    out = []
+    item_feedback = (result.get("feedback") or {}).get("item_feedback") or {}
+    if isinstance(item_feedback, dict):
+        out += [truncate_html(v, limit=1000) for v in item_feedback.values() if isinstance(v, str) and v.strip()]
+    answer_feedback = result.get("answer_feedback") or {}
+    if isinstance(answer_feedback, dict):
+        out += [truncate_html(answer_feedback[k], limit=1000) for k in picked if isinstance(answer_feedback.get(k), str)]
+    return [text for text in out if text] or None
+
+
+def _nq_question(session_item: dict[str, Any], result: dict[str, Any], show: dict[str, bool]) -> dict[str, Any]:
+    item = session_item.get("item") or {}
+    slug = str((item.get("interaction_type") or {}).get("slug") or "")
+    choices = _nq_choices(slug, item.get("interaction_data") or {})
+    scored = result.get("scored_data") or {}
+    value = scored.get("value")
+    yours: Any = None
+    correct_answers: Any = None
+    picked: list[str] = []
+    if choices is not None and isinstance(value, dict) and all(isinstance(v, dict) for v in value.values()):
+        picked = [k for k, v in value.items() if v.get("user_responded")]
+        right = [k for k, v in value.items() if (v.get("result_score") or 0) > 0]
+        yours = [choices.get(k, k) for k in picked]
+        correct_answers = [choices.get(k, k) for k in right] or None
+        if slug in SINGLE_CHOICE:
+            yours = yours[0] if yours else None
+    else:
+        yours = _raw(value)
+    stimulus = session_item.get("stimulus")
+    question = {
+        "position": session_item.get("position"),
+        "type": slug or None,
+        "question": truncate_html(item.get("item_body"), limit=QUESTION_CHAR_LIMIT),
+        "passage": truncate_html(stimulus.get("body"), limit=QUESTION_CHAR_LIMIT)
+        if isinstance(stimulus, dict) and stimulus.get("body")
+        else None,
+        "choices": list(choices.values()) if choices and slug != "true-false" else None,
+        "points_possible": result.get("points_possible", session_item.get("points_possible")),
+    }
+    if show["your_answers"]:
+        question["your_answer"] = yours
+    if show["points"]:
+        question["points"] = result.get("score")
+    if show["correctness"]:
+        question["result"] = scored.get("correct")
+    if show["correct_answers"]:
+        question["correct_answers"] = correct_answers
+    if show["feedback"]:
+        question["feedback"] = _feedback(result, picked)
+    if scored.get("grade_status"):
+        question["grade_status"] = scored.get("grade_status")
+    return question
+
+
+def get_new_quiz_results(args: dict[str, Any]) -> dict[str, Any]:
+    course_id = str(args.get("course_id", "")).strip()
+    assignment_id = str(args.get("assignment_id", "")).strip()
+    if error := _bad_id(course_id=course_id, assignment_id=assignment_id):
+        return error
+    wanted = args.get("attempt")
+    client = canvas_client()
+    assignment = client.get_assignment(
+        course_id=course_id, assignment_id=assignment_id, include_submission=True, include_discussion_topic=False
+    )
+    if not assignment.get("is_quiz_lti_assignment"):
+        if assignment.get("quiz_id"):
+            return invalid_argument(
+                f"assignment {assignment_id} is a Classic Quiz; use get_quiz_results with quiz_id "
+                f"{assignment['quiz_id']}"
+            )
+        return invalid_argument(f"assignment {assignment_id} isn't a New Quiz")
+    result: dict[str, Any] = {
+        "course_id": course_id,
+        "assignment_id": assignment_id,
+        "title": assignment.get("name"),
+        "points_possible": assignment.get("points_possible"),
+        "due_at": assignment.get("due_at"),
+        "note": NEW_QUIZ_NOTE,
+    }
+    submission = assignment.get("submission") or {}
+    if not (int(submission.get("attempt") or 0) >= 1 and submission.get("workflow_state") in CANVAS_SUBMITTED):
+        # Nothing has been handed in, so the quiz isn't opened at all.
+        result["message"] = "No finished attempt to show yet."
+        return result
+
+    reader = NewQuizReader(client.launch_new_quiz(course_id=course_id, assignment_id=assignment_id))
+    entry = reader.participant_results(reader.launch.participant_session_id)
+    history = [h for h in entry.get("attempt_history") or [] if str(h.get("id") or "").isdigit()]
+    attempts = [
+        {
+            "attempt": number,
+            "percentage": round(float(h["percentage"]) * 100, 1) if h.get("percentage") is not None else None,
+            "kept": h.get("authoritative"),
+        }
+        for number, h in enumerate(history, start=1)
+    ]
+    # New Quizzes can leave a finished attempt out of the history (its record still says in progress even though
+    # the attempt inside was submitted). Then the current record is the only candidate, and it's only read below
+    # if its attempt really is finished.
+    sessions = [str(h["id"]) for h in history] or [str(reader.launch.participant_session_id)]
+    if wanted is not None and int(wanted) > len(sessions):
+        return invalid_argument(f"attempt {int(wanted)} isn't a finished attempt")
+    index = int(wanted) - 1 if wanted is not None else len(sessions) - 1
+    chosen = entry if sessions[index] == str(reader.launch.participant_session_id) else None
+    chosen = chosen or reader.participant_results(sessions[index])
+    quiz_session_id = str(chosen.get("quiz_api_quiz_session_id") or "")
+    if not quiz_session_id.isdigit():
+        result["message"] = "New Quizzes didn't say which attempt to read."
+        return result
+    session = reader.quiz_session(chosen, quiz_session_id)
+    quiz = session.get("quiz") or {}
+    scored = session.get("authoritative_result") or {}
+    number = index + 1 if history else session.get("attempt")
+    if not history and number is not None:
+        attempts = [{"attempt": number, "percentage": None, "kept": True}]
+    result.update(
+        {
+            "title": quiz.get("title") or result["title"],
+            "instructions": truncate_html(quiz.get("instructions"), limit=QUESTION_CHAR_LIMIT) or None,
+            "allowed_attempts": entry.get("max_attempts") or None,
+            "attempts": attempts,
+            "attempt": number,
+        }
+    )
+    if session.get("status") not in NEW_QUIZ_FINISHED or not session.get("submitted_at"):
+        result["message"] = "This attempt isn't finished, so nothing in it is read."
+        return result
+    if attempts and attempts[-1]["percentage"] is None and scored.get("percentage") is not None:
+        attempts[-1]["percentage"] = round(float(scored["percentage"]) * 100, 1)
+    show = _visibility(chosen.get("participant_session") or {})
+    result.update(
+        {
+            "score": scored.get("score") if show["points"] else None,
+            "attempt_points_possible": scored.get("points_possible"),
+            "started_at": session.get("start_at"),
+            "submitted_at": session.get("submitted_at"),
+            "shown": show,
+        }
+    )
+    if not show["questions"]:
+        result["message"] = "New Quizzes doesn't show you this attempt's questions, so only the score is shown."
+        return result
+    items = reader.session_items(chosen, quiz_session_id)
+    item_results: list[dict[str, Any]] = []
+    if scored.get("id") is not None and str(scored["id"]).isdigit():
+        item_results = reader.item_results(chosen, quiz_session_id, str(scored["id"]))
+    by_item = {str(r.get("item_id")): r for r in item_results}
+    questions = [
+        _nq_question(si, by_item.get(str((si.get("item") or {}).get("id")), {}), show)
+        for si in sorted(items, key=lambda si: si.get("position") or 0)
+    ]
+    result.update({"question_count": len(questions), "questions": questions})
+    hidden = [name.replace("_", " ") for name, on in show.items() if not on]
+    if hidden:
+        result["hidden_by_quiz_settings"] = hidden
     return result

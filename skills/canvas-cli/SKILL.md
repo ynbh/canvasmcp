@@ -181,13 +181,16 @@ Best practice:
 canvas quizzes list <course_id>
 canvas quizzes results <course_id> <quiz_id>
 canvas quizzes results <course_id> <quiz_id> --attempt 2
+canvas quizzes new-results <course_id> <assignment_id>
+canvas quizzes new-results <course_id> <assignment_id> --attempt 2
 ```
 
 Best practice:
 
-- Both commands are read-only and never open, start, or resume an attempt. Starting a quiz starts its timer, so never try to open or take one.
-- `quizzes list` shows each quiz's time limit, attempts allowed and left, unlock, due, and lock dates, lockdown or access-code requirements, your score, and the instructions. New Quizzes show dates, points, and score only.
+- These commands are read-only and never start or resume an attempt. Starting a quiz starts its timer, so never try to take one.
+- `quizzes list` shows each quiz's time limit, attempts allowed and left, unlock, due, and lock dates, lockdown or access-code requirements, your score, and the instructions. New Quizzes show dates, points, and score only; use `new-results` with their `assignment_id` for the rest.
 - `quizzes results` reads one finished attempt (the latest by default): each question, your answer, whether it was right, the points, and the correct answer when the quiz shows it. It reads nothing while an attempt is in progress.
+- `quizzes new-results` does the same for a New Quiz, by its assignment ID: each question with its choices, your answer, the points, whether it was right, the correct answer, and feedback, as far as the quiz's result settings show them. It opens the quiz the way its Canvas page does (which never starts an attempt) and only after Canvas shows a submitted attempt.
 
 ## Course Structure
 
